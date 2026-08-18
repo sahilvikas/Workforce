@@ -1,0 +1,16 @@
+
+
+{
+ "creation": "2026-08-18 00:00:00",
+ "doctype": "Page",
+ "icon": "users",
+ "modified": "2026-08-18 00:00:00",
+ "modified_by": "Administrator",
+ "module": "Workforce",
+ "name": "workforce-hub",
+ "owner": "Administrator",
+ "page_name": "workforce-hub",
+ "standard": "Yes",
+ "system_page": 0,
+ "title": "Workforce Hub"
+}

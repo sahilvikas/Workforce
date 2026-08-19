@@ -1,30 +1,34 @@
 <template>
 	<div class="workforce-hub">
 		<div class="wf-header">
-			<div class="wf-header-content">
+			<div class="wf-container">
 				<h1 class="wf-title">Workforce Hub</h1>
 				<p class="wf-subtitle">HR Recruitment Management</p>
 			</div>
 		</div>
 
 		<div class="wf-tabs">
-			<button
-				v-for="tab in tabs"
-				:key="tab.key"
-				class="wf-tab-btn"
-				:class="{ active: activeTab === tab.key }"
-				@click="switchTab(tab.key)"
-			>
-				<span class="tab-icon" v-html="tab.icon"></span>
-				{{ tab.label }}
-			</button>
+			<div class="wf-container wf-tabs-inner">
+				<button
+					v-for="tab in tabs"
+					:key="tab.key"
+					class="wf-tab-btn"
+					:class="{ active: activeTab === tab.key }"
+					@click="switchTab(tab.key)"
+				>
+					<span class="tab-icon" v-html="tab.icon"></span>
+					{{ tab.label }}
+				</button>
+			</div>
 		</div>
 
 		<div class="wf-tab-content">
-			<JobsTab v-if="activeTab === 'jobs'" />
-			<CandidatesTab v-if="activeTab === 'candidates'" />
-			<InterviewsTab v-if="activeTab === 'interviews'" />
-			<TalentSearchTab v-if="activeTab === 'talent'" />
+			<div class="wf-container">
+				<JobsTab v-if="activeTab === 'jobs'" />
+				<CandidatesTab v-if="activeTab === 'candidates'" />
+				<InterviewsTab v-if="activeTab === 'interviews'" />
+				<TalentSearchTab v-if="activeTab === 'talent'" />
+			</div>
 		</div>
 	</div>
 </template>
@@ -52,16 +56,36 @@ export default {
 	},
 
 	mounted() {
-		const hash = window.location.hash.replace('#', '');
+		const hash = (window.location.hash || '').replace('#', '');
 		if (['jobs', 'candidates', 'interviews', 'talent'].includes(hash)) {
 			this.activeTab = hash;
 		}
+		window.addEventListener('hashchange', this.onHashChange);
+
+		// Hide any lingering Frappe page elements
+		this.$nextTick(() => {
+			const pageHead = document.querySelector('.page-head');
+			if (pageHead) pageHead.style.display = 'none';
+			const pageHeadWrapper = document.querySelector('.page-head-wrapper');
+			if (pageHeadWrapper) pageHeadWrapper.style.display = 'none';
+		});
+	},
+
+	beforeUnmount() {
+		window.removeEventListener('hashchange', this.onHashChange);
 	},
 
 	methods: {
 		switchTab(tab) {
 			this.activeTab = tab;
-			window.location.hash = tab;
+			history.replaceState(null, '', '/app/workforce-hub#' + tab);
+		},
+
+		onHashChange() {
+			const hash = (window.location.hash || '').replace('#', '');
+			if (['jobs', 'candidates', 'interviews', 'talent'].includes(hash)) {
+				this.activeTab = hash;
+			}
 		}
 	}
 };
@@ -71,12 +95,22 @@ export default {
 .workforce-hub {
 	font-family: var(--font-stack, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif);
 	background: var(--bg-color, #f5f6fa);
-	min-height: 100vh;
+	min-height: calc(100vh - 60px);
+	margin: -20px;
+	margin-top: -10px;
+}
+
+.wf-container {
+	max-width: 1200px;
+	margin: 0 auto;
+	width: 100%;
+	padding: 0 24px;
+	box-sizing: border-box;
 }
 
 .wf-header {
 	background: linear-gradient(135deg, #3b3689 0%, #4f46e5 100%);
-	padding: 24px 32px;
+	padding: 24px 0;
 	color: #fff;
 }
 
@@ -84,26 +118,25 @@ export default {
 	font-size: 24px;
 	font-weight: 700;
 	margin: 0;
-	max-width: 1400px;
-	margin: 0 auto;
 }
 
 .wf-subtitle {
 	font-size: 14px;
 	opacity: 0.8;
-	margin: 4px auto 0;
-	max-width: 1400px;
+	margin: 4px 0 0;
 }
 
 .wf-tabs {
-	display: flex;
-	gap: 0;
 	background: #fff;
 	border-bottom: 2px solid #e5e7eb;
-	padding: 0 32px;
 	position: sticky;
 	top: 0;
 	z-index: 10;
+}
+
+.wf-tabs-inner {
+	display: flex;
+	gap: 0;
 }
 
 .wf-tab-btn {
@@ -137,40 +170,33 @@ export default {
 }
 
 .wf-tab-content {
-	padding: 24px 32px;
-	max-width: 1400px;
-	margin: 0 auto;
-	width: 100%;
-	box-sizing: border-box;
+	padding: 24px 0;
 }
 
 /* Large desktop 1440px+ */
 @media (min-width: 1441px) {
-	.wf-header { padding: 28px 48px; }
-	.wf-tabs { padding: 0 48px; }
-	.wf-tab-content { padding: 28px 48px; max-width: 1600px; }
+	.wf-container { max-width: 1400px; padding: 0 32px; }
+	.wf-header { padding: 28px 0; }
 }
 
 /* Standard desktop 1024-1440 */
 @media (max-width: 1440px) {
-	.wf-tab-content { padding: 24px 32px; }
+	.wf-container { max-width: 1200px; padding: 0 24px; }
 }
 
 /* Small laptop / tablet landscape 768-1024 */
 @media (max-width: 1024px) {
-	.wf-header { padding: 20px 24px; }
-	.wf-tabs { padding: 0 20px; }
-	.wf-tab-content { padding: 20px 24px; }
+	.wf-container { padding: 0 20px; }
+	.wf-header { padding: 20px 0; }
 	.wf-tab-btn { padding: 12px 18px; font-size: 13px; }
 }
 
 /* Tablet portrait ~768 */
 @media (max-width: 768px) {
-	.wf-header { padding: 18px 16px; }
+	.wf-container { padding: 0 16px; }
+	.wf-header { padding: 18px 0; }
 	.wf-title { font-size: 20px; }
 	.wf-subtitle { font-size: 13px; }
-	.wf-tabs { padding: 0 12px; }
 	.wf-tab-btn { padding: 10px 14px; font-size: 13px; }
-	.wf-tab-content { padding: 16px; }
 }
 </style>

@@ -12,6 +12,16 @@ frappe.pages['workforce-hub'].on_page_load = function(wrapper) {
 		el.id = 'workforce-hub-app';
 		$(page.body).html(el);
 
-		new workforce.ui.WorkforceHub({ el: '#workforce-hub-app' });
+		// Vue 3 (Frappe v15+)
+		if (Vue.createApp) {
+			const app = Vue.createApp(workforce.ui.WorkforceHub);
+			app.mount(el);
+		} else {
+			// Vue 2 fallback
+			new Vue({
+				el: el,
+				render: h => h(workforce.ui.WorkforceHub)
+			});
+		}
 	});
 };

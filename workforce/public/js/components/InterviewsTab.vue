@@ -451,7 +451,6 @@ export default {
 				return;
 			}
 
-			// Build comprehensive feedback text
 			let fullFeedback = '';
 			if (this.feedbackForm.strengths) {
 				fullFeedback += 'Strengths: ' + this.feedbackForm.strengths + '\n\n';
@@ -472,22 +471,19 @@ export default {
 
 			this.saving = true;
 			try {
-				await this.api('frappe.client.save', {
-					doc: {
-						doctype: 'WF Interview',
-						name: this.selected.name,
+				await this.api('wf_submit_feedback', {
+					data: JSON.stringify({
+						interview_name: this.selected.name,
 						rating: this.feedbackForm.rating,
 						recommendation: this.feedbackForm.recommendation,
-						feedback: fullFeedback.trim(),
-						status: 'Completed'
-					}
+						feedback: fullFeedback.trim()
+					})
 				});
 				this.selected.rating = this.feedbackForm.rating;
 				this.selected.recommendation = this.feedbackForm.recommendation;
 				this.selected.feedback = fullFeedback.trim();
 				this.selected.status = 'Completed';
 				this.showToast('Feedback submitted successfully!');
-				// Reload to update KPIs and pending list
 				await this.loadInterviews();
 			} catch (e) {
 				this.showToast('Failed to submit feedback', 'error');
@@ -499,12 +495,10 @@ export default {
 			if (!this.rescheduleForm.date) { this.showToast('New date is required', 'error'); return; }
 			this.saving = true;
 			try {
-				await this.api('frappe.client.save', {
-					doc: {
-						doctype: 'WF Interview', name: this.selected.name,
-						scheduled_date: this.rescheduleForm.date,
-						scheduled_time: this.rescheduleForm.time || this.selected.scheduled_time
-					}
+				await this.api('wf_reschedule_interview', {
+					interview_name: this.selected.name,
+					scheduled_date: this.rescheduleForm.date,
+					scheduled_time: this.rescheduleForm.time || this.selected.scheduled_time
 				});
 				this.selected.scheduled_date = this.rescheduleForm.date;
 				if (this.rescheduleForm.time) this.selected.scheduled_time = this.rescheduleForm.time;
@@ -519,8 +513,8 @@ export default {
 			if (!confirm('Cancel this interview?')) return;
 			this.saving = true;
 			try {
-				await this.api('frappe.client.save', {
-					doc: { doctype: 'WF Interview', name: this.selected.name, status: 'Cancelled' }
+				await this.api('wf_cancel_interview', {
+					interview_name: this.selected.name
 				});
 				this.selected.status = 'Cancelled';
 				this.showToast('Interview cancelled');

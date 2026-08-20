@@ -92,6 +92,15 @@ export default {
 </script>
 
 <style scoped>
+/* Override Frappe's container width only for Workforce Hub */
+.workforce-hub :deep(.container-xl),
+.workforce-hub :deep(.container-lg),
+.workforce-hub :deep(.container-md),
+.workforce-hub :deep(.container-sm),
+.workforce-hub :deep(.container) {
+	max-width: 100%;
+}
+
 .workforce-hub {
 	font-family: var(--font-stack, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif);
 	background: var(--bg-color, #f5f6fa);

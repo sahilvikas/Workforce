@@ -472,12 +472,12 @@ export default {
 			this.saving = true;
 			try {
 				await this.api('wf_submit_feedback', {
-					data: JSON.stringify({
+					data: {
 						interview_name: this.selected.name,
 						rating: this.feedbackForm.rating,
 						recommendation: this.feedbackForm.recommendation,
 						feedback: fullFeedback.trim()
-					})
+					}
 				});
 				this.selected.rating = this.feedbackForm.rating;
 				this.selected.recommendation = this.feedbackForm.recommendation;

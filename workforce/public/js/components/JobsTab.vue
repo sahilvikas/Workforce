@@ -436,10 +436,10 @@ export default {
 				};
 				if (this.editingJob) {
 					data.name = this.editingJob.name;
-					await this.api('wf_update_job_opening', { data: JSON.stringify(data) });
+					await this.api('wf_update_job_opening', { data: data });
 					this.showToast('Job updated successfully');
 				} else {
-					await this.api('wf_create_job_opening', { data: JSON.stringify(data) });
+					await this.api('wf_create_job_opening', { data: data });
 					this.showToast('Job created successfully');
 				}
 				this.closeDialog();
@@ -453,7 +453,7 @@ export default {
 		async changeStatus(job, newStatus) {
 			try {
 				await this.api('wf_update_job_opening', {
-					data: JSON.stringify({ name: job.name, status: newStatus })
+					data: { name: job.name, status: newStatus }
 				});
 				job.status = newStatus;
 				this.showToast('Status changed to ' + newStatus);

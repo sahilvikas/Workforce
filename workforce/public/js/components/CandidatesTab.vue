@@ -355,11 +355,11 @@ export default {
 			this.saving = true;
 			try {
 				await this.api('wf_schedule_interviews', {
-					data: JSON.stringify({
+					data: {
 						applicant: this.selected.name,
 						job_opening: this.selected.job_opening,
 						rounds: this.scheduleForm.rounds
-					})
+					}
 				});
 				this.selected.status = 'Interview Scheduled';
 				this.showScheduleDialog = false;
@@ -376,14 +376,14 @@ export default {
 			this.saving = true;
 			try {
 				await this.api('wf_create_offer', {
-					data: JSON.stringify({
+					data: {
 						applicant: this.selected.name,
 						job_opening: this.selected.job_opening,
 						designation: this.offerForm.designation,
 						annual_ctc: this.offerForm.annual_ctc,
 						start_date: this.offerForm.start_date,
 						terms: this.offerForm.terms
-					})
+					}
 				});
 				this.selected.status = 'Offer Sent';
 				this.showOfferDialog = false;

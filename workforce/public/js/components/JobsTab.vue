@@ -564,13 +564,11 @@ export default {
 			}
 			this.saving = true;
 			try {
-				const doc = {
-					doctype: 'WF Interview Template',
+				const data = {
 					template_name: this.templateForm.template_name.trim(),
 					rounds: this.templateForm.rounds
 						.filter(r => r.round_name.trim())
 						.map(r => ({
-							doctype: 'WF Interview Round',
 							round_name: r.round_name.trim(),
 							default_interviewer: r.default_interviewer || '',
 							duration: r.duration || 45,
@@ -578,13 +576,10 @@ export default {
 						}))
 				};
 				if (this.editingTemplate) {
-					doc.name = this.editingTemplate.name;
-					await this.api('frappe.client.save', { doc });
-					this.showToast('Template updated');
-				} else {
-					await this.api('frappe.client.insert', { doc });
-					this.showToast('Template created');
+					data.name = this.editingTemplate.name;
 				}
+				await this.api('wf_save_interview_template', { data: data });
+				this.showToast(this.editingTemplate ? 'Template updated' : 'Template created');
 				this.showTemplateDialog = false;
 				this.editingTemplate = null;
 				await this.loadTemplates();
@@ -597,8 +592,8 @@ export default {
 		async deleteTemplate(template) {
 			if (!confirm('Delete template "' + (template.template_name || template.name) + '"?')) return;
 			try {
-				await this.api('frappe.client.delete', {
-					doctype: 'WF Interview Template', name: template.name
+				await this.api('wf_delete_interview_template', {
+					template_name: template.name
 				});
 				this.showTemplatePanel = false;
 				this.showToast('Template deleted');

@@ -275,17 +275,11 @@ export default {
 
 		async loadJobs() {
 			try {
-				// Use custom API for open positions
 				const res = await this.api('wf_get_open_positions');
 				this.jobs = res || [];
 			} catch (e) {
 				try {
-					this.jobs = await this.api('frappe.client.get_list', {
-						doctype: 'WF Job Opening',
-						fields: ['name', 'job_title'],
-						filters: { status: 'Open' },
-						limit_page_length: 0
-					});
+					this.jobs = await this.api('wf_get_job_openings');
 				} catch (e2) { /* silent */ }
 			}
 		},
@@ -340,8 +334,9 @@ export default {
 		async changeStatus() {
 			if (!this.selected || this.newStatus === this.selected.status) return;
 			try {
-				await this.api('frappe.client.save', {
-					doc: { doctype: 'WF Applicant', name: this.selected.name, status: this.newStatus }
+				await this.api('wf_update_applicant_status', {
+					applicant_name: this.selected.name,
+					status: this.newStatus
 				});
 				this.selected.status = this.newStatus;
 				this.showToast('Status changed to ' + this.newStatus);
@@ -359,29 +354,12 @@ export default {
 			if (!valid) { this.showToast('All rounds need a date', 'error'); return; }
 			this.saving = true;
 			try {
-				for (let i = 0; i < this.scheduleForm.rounds.length; i++) {
-					const r = this.scheduleForm.rounds[i];
-					await this.api('frappe.client.insert', {
-						doc: {
-							doctype: 'WF Interview',
-							applicant: this.selected.name,
-							job_opening: this.selected.job_opening,
-							round_number: i + 1,
-							round_name: r.round_name,
-							interviewer: r.interviewer,
-							scheduled_date: r.date,
-							scheduled_time: r.time,
-							status: 'Scheduled'
-						}
-					});
-				}
-				await this.api('frappe.client.save', {
-					doc: {
-						doctype: 'WF Applicant', name: this.selected.name,
-						status: 'Interview Scheduled',
-						total_rounds: this.scheduleForm.rounds.length,
-						current_round: 1
-					}
+				await this.api('wf_schedule_interviews', {
+					data: JSON.stringify({
+						applicant: this.selected.name,
+						job_opening: this.selected.job_opening,
+						rounds: this.scheduleForm.rounds
+					})
 				});
 				this.selected.status = 'Interview Scheduled';
 				this.showScheduleDialog = false;
@@ -397,19 +375,15 @@ export default {
 			if (!this.offerForm.designation) { this.showToast('Designation is required', 'error'); return; }
 			this.saving = true;
 			try {
-				await this.api('frappe.client.insert', {
-					doc: {
-						doctype: 'WF Offer Letter',
+				await this.api('wf_create_offer', {
+					data: JSON.stringify({
 						applicant: this.selected.name,
 						job_opening: this.selected.job_opening,
 						designation: this.offerForm.designation,
 						annual_ctc: this.offerForm.annual_ctc,
 						start_date: this.offerForm.start_date,
 						terms: this.offerForm.terms
-					}
-				});
-				await this.api('frappe.client.save', {
-					doc: { doctype: 'WF Applicant', name: this.selected.name, status: 'Offer Sent' }
+					})
 				});
 				this.selected.status = 'Offer Sent';
 				this.showOfferDialog = false;

@@ -353,29 +353,10 @@ export default {
 		},
 
 		// ───── JOBS ─────
-
 		async loadJobs() {
 			this.loading = true;
 			try {
-				const list = await this.api('frappe.client.get_list', {
-					doctype: 'WF Job Opening',
-					fields: ['name', 'job_title', 'department', 'designation', 'no_of_positions', 'status', 'posted_on', 'closing_date', 'interview_template'],
-					limit_page_length: 0,
-					order_by: 'creation desc'
-				});
-				for (let job of list) {
-					const full = await this.api('frappe.client.get', {
-						doctype: 'WF Job Opening', name: job.name
-					});
-					job.required_skills = full.required_skills || [];
-					job.description = full.description || '';
-					// Get template name
-					if (job.interview_template) {
-						const tmpl = this.templates.find(t => t.name === job.interview_template);
-						job.template_name = tmpl ? (tmpl.template_name || tmpl.name) : job.interview_template;
-					}
-				}
-				this.jobs = list;
+				this.jobs = await this.api('wf_get_job_openings');
 			} catch (e) {
 				this.showToast('Failed to load jobs', 'error');
 			}
@@ -429,23 +410,21 @@ export default {
 			}
 			this.saving = true;
 			try {
-				const doc = {
-					doctype: 'WF Job Opening',
+				const data = {
 					...this.form,
 					required_skills: this.form.required_skills
 						.filter(s => s.skill_name.trim())
 						.map(s => ({
-							doctype: 'WF Required Skill',
 							skill_name: s.skill_name.trim(),
 							is_mandatory: s.is_mandatory ? 1 : 0
 						}))
 				};
 				if (this.editingJob) {
-					doc.name = this.editingJob.name;
-					await this.api('frappe.client.save', { doc });
+					data.name = this.editingJob.name;
+					await this.api('wf_update_job_opening', { data: JSON.stringify(data) });
 					this.showToast('Job updated successfully');
 				} else {
-					await this.api('frappe.client.insert', { doc });
+					await this.api('wf_create_job_opening', { data: JSON.stringify(data) });
 					this.showToast('Job created successfully');
 				}
 				this.closeDialog();
@@ -458,8 +437,8 @@ export default {
 
 		async changeStatus(job, newStatus) {
 			try {
-				await this.api('frappe.client.save', {
-					doc: { doctype: 'WF Job Opening', name: job.name, status: newStatus }
+				await this.api('wf_update_job_opening', {
+					data: JSON.stringify({ name: job.name, status: newStatus })
 				});
 				job.status = newStatus;
 				this.showToast('Status changed to ' + newStatus);
@@ -471,9 +450,7 @@ export default {
 		async deleteJob(job) {
 			if (!confirm('Delete "' + job.job_title + '"? This cannot be undone.')) return;
 			try {
-				await this.api('frappe.client.delete', {
-					doctype: 'WF Job Opening', name: job.name
-				});
+				await this.api('wf_delete_job_opening', { job_name: job.name });
 				this.showPanel = false;
 				this.showToast('Job deleted');
 				await this.loadJobs();
@@ -492,25 +469,7 @@ export default {
 		async loadTemplates() {
 			this.templatesLoading = true;
 			try {
-				const list = await this.api('frappe.client.get_list', {
-					doctype: 'WF Interview Template',
-					fields: ['name', 'template_name'],
-					limit_page_length: 0,
-					order_by: 'creation desc'
-				});
-				for (let t of list) {
-					const full = await this.api('frappe.client.get', {
-						doctype: 'WF Interview Template', name: t.name
-					});
-					t.rounds = full.rounds || [];
-					// Count jobs using this template
-					const jobs = await this.api('frappe.client.get_count', {
-						doctype: 'WF Job Opening',
-						filters: { interview_template: t.name }
-					});
-					t.job_count = jobs || 0;
-				}
-				this.templates = list;
+				this.templates = await this.api('wf_get_interview_templates');
 			} catch (e) {
 				this.showToast('Failed to load templates', 'error');
 			}

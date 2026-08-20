@@ -30,7 +30,7 @@
 			</select>
 		</div>
 
-		<!-- Pipeline View -->
+		<!-- Pipeline Views -->
 		<div v-if="view === 'pipeline'" class="pipeline">
 			<div v-for="stage in pipelineStages" :key="stage" class="pipeline-column">
 				<div class="pipeline-header">

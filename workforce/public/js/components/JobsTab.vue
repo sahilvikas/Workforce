@@ -113,11 +113,17 @@
 				</div>
 				<div class="form-group">
 					<label>Department</label>
-					<input v-model="form.department" type="text" class="form-input" placeholder="e.g. Engineering" />
+					<select v-model="form.department" class="form-input">
+						<option value="">— Select Department —</option>
+						<option v-for="d in departments" :key="d.name" :value="d.name">{{ d.name }}</option>
+					</select>
 				</div>
 				<div class="form-group">
 					<label>Designation</label>
-					<input v-model="form.designation" type="text" class="form-input" placeholder="e.g. Software Engineer" />
+					<select v-model="form.designation" class="form-input">
+						<option value="">— Select Designation —</option>
+						<option v-for="d in designations" :key="d.name" :value="d.name">{{ d.name }}</option>
+					</select>
 				</div>
 				<div class="form-group">
 					<label>No. of Positions</label>
@@ -185,8 +191,11 @@
 									<input v-model="round.round_name" type="text" class="form-input" placeholder="e.g. Technical Round" />
 								</div>
 								<div class="form-group">
-									<label>Default Interviewer (email)</label>
-									<input v-model="round.default_interviewer" type="text" class="form-input" placeholder="e.g. shail@visionify.ai" />
+									<label>Default Interviewer</label>
+									<select v-model="round.default_interviewer" class="form-input">
+										<option value="">— Select Interviewer —</option>
+										<option v-for="u in interviewers" :key="u.name" :value="u.name">{{ u.full_name || u.name }}</option>
+									</select>
 								</div>
 								<div class="form-group">
 									<label>Duration (minutes)</label>
@@ -292,6 +301,9 @@ export default {
 			editingJob: null,
 			selectedJob: null,
 			form: this.emptyForm(),
+			departments: [],
+			designations: [],
+			interviewers: [],
 			// Templates
 			templates: [],
 			templatesLoading: false,
@@ -320,6 +332,9 @@ export default {
 	mounted() {
 		this.loadJobs();
 		this.loadTemplates();
+		this.loadDepartments();
+		this.loadDesignations();
+		this.loadInterviewers();
 	},
 
 	methods: {
@@ -462,6 +477,40 @@ export default {
 		openDetail(job) {
 			this.selectedJob = job;
 			this.showPanel = true;
+		},
+
+		async loadDepartments() {
+			try {
+				this.departments = await this.api('frappe.client.get_list', {
+					doctype: 'Department',
+					fields: ['name'],
+					limit_page_length: 0,
+					order_by: 'name asc'
+				});
+			} catch (e) { this.departments = []; }
+		},
+
+		async loadDesignations() {
+			try {
+				this.designations = await this.api('frappe.client.get_list', {
+					doctype: 'Designation',
+					fields: ['name'],
+					limit_page_length: 0,
+					order_by: 'name asc'
+				});
+			} catch (e) { this.designations = []; }
+		},
+
+		async loadInterviewers() {
+			try {
+				this.interviewers = await this.api('frappe.client.get_list', {
+					doctype: 'User',
+					fields: ['name', 'full_name'],
+					filters: { enabled: 1, user_type: 'System User' },
+					limit_page_length: 0,
+					order_by: 'full_name asc'
+				});
+			} catch (e) { this.interviewers = []; }
 		},
 
 		// ───── TEMPLATES ─────

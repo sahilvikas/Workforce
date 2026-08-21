@@ -120,7 +120,11 @@
 					<select v-model="newStatus" class="form-input" style="margin-top: 6px;">
 						<option v-for="s in allStatuses" :key="s" :value="s">{{ s }}</option>
 					</select>
-					<button class="btn-primary btn-sm" style="margin-top: 8px;" @click="changeStatus" :disabled="newStatus === selected.status">Update Status</button>
+					<div class="status-actions">
+						<button class="btn-primary btn-sm" @click="changeStatus" :disabled="newStatus === selected.status">Update Status</button>
+						<button v-if="selected.status === 'Shortlisted'" class="btn-success btn-sm" @click="showScheduleDialog = true">Schedule Interview</button>
+						<button v-if="selected.status === 'Selected'" class="btn-success btn-sm" @click="showOfferDialog = true">Create Offer</button>
+					</div>
 				</div>
 
 				<!-- Interview History -->
@@ -142,10 +146,6 @@
 				</div>
 			</div>
 
-			<template #actions>
-				<button v-if="selected && selected.status === 'Shortlisted'" class="btn-primary" @click="showScheduleDialog = true">Schedule Interview</button>
-				<button v-if="selected && selected.status === 'Selected'" class="btn-primary" @click="showOfferDialog = true">Create Offer</button>
-			</template>
 		</DetailPanel>
 
 		<!-- Schedule Interview Dialog -->
@@ -321,7 +321,7 @@ export default {
 							interviewer: r.default_interviewer || '',
 							date: '',
 							time: '',
-							duration_minutes: r.duration_minutes || 30
+							duration_minutes: r.duration || 30
 						}));
 					}
 				} catch (e) { /* no template — user adds manually */ }
@@ -477,6 +477,10 @@ export default {
 .form-input:focus { border-color: #4f46e5; }
 .form-textarea { resize: vertical; font-family: inherit; }
 .empty-msg { color: #9ca3af; font-size: 14px; margin-bottom: 12px; }
+
+.status-actions { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+.btn-success { background: #10b981; color: #fff; border: none; padding: 6px 14px; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 13px; }
+.btn-success:hover { background: #059669; }
 
 @media (max-width: 1024px) {
 	.kpi-row { grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; }

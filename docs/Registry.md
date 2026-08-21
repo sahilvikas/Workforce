@@ -30,6 +30,18 @@
 | WF Document Entry | WF Candidate Detail | Uploaded documents |
 | WF Reference Entry | WF Candidate Detail | References |
 
+### Field Changes (Aug 21, 2026 — Google Calendar Integration)
+| Doctype | Field | Type | Purpose | On dev | On prod |
+|---|---|---|---|---|---|
+| WF Interview | google_event_id | Data (Hidden) | Stores Google Calendar event ID for reschedule/cancel sync | ✅ | ❌ |
+| WF Google Settings | client_id | Data | Google OAuth Client ID | ✅ | ❌ |
+| WF Google Settings | client_secret | Password | Google OAuth Client Secret | ✅ | ❌ |
+| WF Google Settings | refresh_token | Small Text | Google OAuth Refresh Token (long-lived) | ✅ | ❌ |
+
+Note: `WF Interview.google_meet_link` (Data) already existed. `WF Google Settings.service_account_json` kept for future production Service Account option — currently unused.
+
+**⚠️ Known issue:** WF Google Settings was created as a regular doctype, not a Single — records get random names (current: `be8jog6lii`). Scripts locate it via `frappe.db.get_value("WF Google Settings", {"enable": 1}, "name")`. Consider converting to Single before production.
+
 ### Pending Doctype (Not yet created)
 | Doctype | Purpose | Status |
 |---|---|---|
@@ -72,12 +84,30 @@
 | wf_update_job_opening | POST | API | Updates job fields, status, skills | JobsTab.vue |
 | wf_delete_job_opening | POST | API | Deletes a job opening | JobsTab.vue |
 | wf_update_applicant_status | POST | API | Changes applicant status with validation | CandidatesTab.vue |
-| wf_schedule_interviews | POST | API | Creates interview records per round, updates applicant | CandidatesTab.vue |
+| wf_schedule_interviews | POST | API | Creates interview records per round + Google Calendar event with Meet link + email notifications (updated Aug 21) | CandidatesTab.vue |
 | wf_create_offer | POST | API | Creates offer letter, sets applicant to Offer Sent | CandidatesTab.vue |
 | wf_submit_feedback | POST | API | Saves rating/recommendation/feedback, marks complete | InterviewsTab.vue |
-| wf_reschedule_interview | POST | API | Updates interview date/time | InterviewsTab.vue |
-| wf_cancel_interview | POST | API | Sets interview status to Cancelled | InterviewsTab.vue |
+| wf_reschedule_interview | POST | API | Updates interview date/time + syncs Google Calendar event + email (updated Aug 21) | InterviewsTab.vue |
+| wf_cancel_interview | POST | API | Sets interview status to Cancelled + cancels Google Calendar event + email (updated Aug 21) | InterviewsTab.vue |
 | wf_get_interview_templates | GET | API | Returns all templates with rounds and job count | JobsTab.vue |
+
+### API Scripts — Google Calendar Integration (3) ✅ Created Aug 21, 2026
+| Script | Method | Type | Purpose | Used By |
+|---|---|---|---|---|
+| wf_google_create_event | POST | API | Standalone: creates Google Calendar event with Meet link | ⚠️ Standalone/testing — logic runs inline in wf_schedule_interviews (nested frappe.call unreliable for this flow) |
+| wf_google_update_event | POST | API | Standalone: updates Google Calendar event | ⚠️ Standalone/testing — logic runs inline in wf_reschedule_interview |
+| wf_google_delete_event | POST | API | Standalone: cancels Google Calendar event | ⚠️ Standalone/testing — logic runs inline in wf_cancel_interview |
+
+**Decision needed (ask Shail):** keep the 3 standalone wf_google_* scripts as testing utilities, or delete them since the working logic is inline in the 3 main interview scripts.
+
+### Google Calendar Integration — Architecture Notes (Aug 21, 2026)
+- **Auth:** OAuth 2.0 refresh-token flow. Credentials stored in WF Google Settings (client_id, client_secret, refresh_token, calendar_owner_email, timezone). Currently Vamshi's personal Gmail for dev testing; swap to CCP Workspace credentials for production — zero code changes.
+- **HTTP:** Uses `frappe.make_post_request` / `frappe.make_put_request` (available in RestrictedPython) — no repo Python, per developer guide.
+- **Flow:** wf_schedule_interviews → refresh access token → POST calendar event with `conferenceData` (auto-generates Meet link) → stores `google_meet_link` + `google_event_id` on WF Interview → sends email to candidate + interviewer (guarded by default outgoing Email Account existence — silently skipped on dev where SMTP unavailable, works on production).
+- **Reschedule:** PUT to same event via google_event_id — Meet link is preserved, Google notifies attendees (`sendUpdates=all`).
+- **Cancel:** PUT status=cancelled via google_event_id.
+- **Timezone guard:** invalid timezone values (e.g. "Delhi/India") are normalized to "Asia/Kolkata" in-script — an invalid IANA timezone causes Google to reject with 400 (cost us a debugging day; documented here per guide).
+- **Testing gotcha:** System Console rolls back DB writes after execution — interviews created there vanish, and external API side-effects (calendar events) still happen. Test via browser `frappe.call` or the UI, never via System Console.
 
 ### Pending APIs (Needed for Talent Search tab)
 | Script | Method | Type | Purpose | Status |
@@ -99,15 +129,15 @@
 ## Email Notifications (Created in ERPNext UI on dev)
 | Name | DocType | Event | Recipient | Purpose | Status |
 |---|---|---|---|---|---|
-| WF - Application Received | WF Applicant | New | doc.email | Thank you for applying | ✅ Built, ⚠️ SMTP broken |
-| WF - Application Shortlisted | WF Applicant | Value Change (status) | doc.email | You've been shortlisted | ✅ Built, ⚠️ SMTP broken |
-| WF - Application Rejected | WF Applicant | Value Change (status) | doc.email | Moved forward with others | ✅ Built, ⚠️ SMTP broken |
-| WF - Interview Scheduled | WF Interview | New | doc.applicant_email | Interview scheduled details | ✅ Built, ⚠️ SMTP broken |
-| WF - Offer Letter Sent | WF Offer Letter | New | doc.applicant_email | Congratulations offer | ✅ Built, ⚠️ SMTP broken |
-| WF - New Applicant Alert | WF Applicant | New | System Manager role | Internal HR alert | ✅ Built, ⚠️ SMTP broken |
-| WF - Interview Assigned to Interviewer | WF Interview | New | doc.interviewer | Interview details + feedback link | ❌ Needs creation |
+| WF - Application Received | WF Applicant | New | doc.email | Thank you for applying | ✅ Built, ⚠️ SMTP works on prod only |
+| WF - Application Shortlisted | WF Applicant | Value Change (status) | doc.email | You've been shortlisted | ✅ Built, ⚠️ SMTP works on prod only |
+| WF - Application Rejected | WF Applicant | Value Change (status) | doc.email | Moved forward with others | ✅ Built, ⚠️ SMTP works on prod only |
+| WF - Interview Scheduled | WF Interview | New | doc.applicant_email | Interview scheduled details | ⚠️ Superseded — wf_schedule_interviews now sends richer email (with Meet link) directly via frappe.sendmail. Review for duplicate emails on prod; disable this notification if doubled. |
+| WF - Offer Letter Sent | WF Offer Letter | New | doc.applicant_email | Congratulations offer | ✅ Built, ⚠️ SMTP works on prod only |
+| WF - New Applicant Alert | WF Applicant | New | System Manager role | Internal HR alert | ✅ Built, ⚠️ SMTP works on prod only |
+| WF - Interview Assigned to Interviewer | WF Interview | New | doc.interviewer | Interview details + feedback link | ⚠️ Superseded — interviewer now receives the scheduling email from wf_schedule_interviews directly |
 
-**⚠️ Blocker:** SMTP not working — ZIPCushions Support email encryption key mismatch. Sahil needs to fix.
+**Update (Aug 21):** SMTP confirmed working on production (Sahil). Dev has no default outgoing Email Account — interview scripts guard sendmail with an Email Account existence check so they run cleanly on both.
 
 ---
 
@@ -146,9 +176,15 @@
 |---|---|---|
 | `workforce/public/js/components/WorkforceHub.vue` | Parent — header, 4 tabs, hash routing (#jobs, #candidates, #interviews, #talent), hides Frappe page head | — |
 | `workforce/public/js/components/JobsTab.vue` | Job openings CRUD + Interview Templates sub-view with rounds | `wf_get_job_openings`, `wf_create_job_opening`, `wf_update_job_opening`, `wf_delete_job_opening`, `wf_get_interview_templates` |
-| `workforce/public/js/components/CandidatesTab.vue` | Pipeline/table, status change, schedule interview, create offer, interview history | `wf_get_dashboard_data`, `wf_get_open_positions`, `wf_update_applicant_status`, `wf_schedule_interviews`, `wf_create_offer` |
-| `workforce/public/js/components/InterviewsTab.vue` | Calendar/list, enhanced feedback form (stars, recommendations, skill ratings, strengths/improvements), pending banner, previous round context, role-based filtering, HR-only reschedule/cancel | `wf_get_interview_calendar_data`, `wf_submit_feedback`, `wf_reschedule_interview`, `wf_cancel_interview` |
+| `workforce/public/js/components/CandidatesTab.vue` | Pipeline/table, status change, schedule interview (with duration + Google Meet), create offer, interview history with Join Google Meet links (updated Aug 21) | `wf_get_dashboard_data`, `wf_get_open_positions`, `wf_update_applicant_status`, `wf_schedule_interviews`, `wf_create_offer` |
+| `workforce/public/js/components/InterviewsTab.vue` | Calendar/list, enhanced feedback form (stars, recommendations, skill ratings, strengths/improvements), pending banner, previous round context, role-based filtering, HR-only reschedule/cancel (params fixed to match backend, Aug 21), Join Google Meet link in detail panel | `wf_get_interview_calendar_data`, `wf_submit_feedback`, `wf_reschedule_interview`, `wf_cancel_interview` |
 | `workforce/public/js/components/TalentSearchTab.vue` | CSV upload, parse, import, match scoring, invite, bulk invite | `wf_import_prospects`, `wf_send_invite`, `wf_bulk_invite` (pending) |
+
+### Frontend Changes (Aug 21, 2026 — Google Meet Integration Push)
+| File | Change |
+|---|---|
+| CandidatesTab.vue | Schedule dialog: added Duration (min) field; scheduleInterviews() now maps form fields (date→scheduled_date, time→scheduled_time) and sends round_number + duration_minutes to match backend contract; Interview History loads google_meet_link and renders Join Google Meet link per round |
+| InterviewsTab.vue | reschedule() and cancelInterview() fixed: params wrapped in data:{} with interview: key (was interview_name — silently failing against backend); added event-rescheduled calendar style |
 
 ### Shared Components
 | File | Purpose |
@@ -180,9 +216,9 @@
 | Load candidates | `wf_get_dashboard_data` | ✅ Server Script API |
 | Load open jobs | `wf_get_open_positions` | ✅ Server Script API |
 | Change status | `wf_update_applicant_status` | ✅ Server Script API |
-| Schedule interviews | `wf_schedule_interviews` | ✅ Server Script API |
+| Schedule interviews (+ Google Meet + email) | `wf_schedule_interviews` | ✅ Server Script API |
 | Create offer | `wf_create_offer` | ✅ Server Script API |
-| Load interview history | `frappe.client.get_list` WF Interview | ⚠️ Direct (read-only, acceptable) |
+| Load interview history (incl. google_meet_link) | `frappe.client.get_list` WF Interview | ⚠️ Direct (read-only, acceptable) |
 | Load interview template | `frappe.client.get` WF Interview Template | ⚠️ Direct (read-only, acceptable) |
 
 ### InterviewsTab.vue
@@ -190,8 +226,8 @@
 |---|---|---|
 | Load interviews | `wf_get_interview_calendar_data` | ✅ Server Script API |
 | Submit feedback | `wf_submit_feedback` | ✅ Server Script API |
-| Reschedule | `wf_reschedule_interview` | ✅ Server Script API |
-| Cancel interview | `wf_cancel_interview` | ✅ Server Script API |
+| Reschedule (+ Google Calendar sync) | `wf_reschedule_interview` | ✅ Server Script API |
+| Cancel interview (+ Google Calendar sync) | `wf_cancel_interview` | ✅ Server Script API |
 | Load previous rounds | `frappe.client.get_list` WF Interview | ⚠️ Direct (read-only, acceptable) |
 | Check user role | `frappe.client.get_list` Has Role | ⚠️ Direct (read-only, acceptable) |
 
@@ -230,6 +266,7 @@
 ### Production (pending)
 - Move to `erp.cozycornerpatios.com`
 - Sahil handles migration
+- **Google Calendar for production:** create CCP Workspace OAuth credentials (or Service Account with domain-wide delegation), fill WF Google Settings on prod — no code changes needed
 
 ---
 
@@ -237,20 +274,24 @@
 
 | Item | Priority | Status |
 |---|---|---|
+| Sahil: `bench build --app workforce` (Google Meet UI push, Aug 21) | 🔴 High | ⚠️ Waiting on Sahil |
+| End-to-end Google Meet test via UI after build (schedule → link → reschedule → cancel) | 🔴 High | ❌ After deploy |
 | Fix `wf_get_open_positions` API (KeyError in console) | 🔴 High | ❌ Check/recreate on dev |
 | Fix `wf_create_job_opening` link validation (ignore_links flag) | 🔴 High | ❌ Update API on dev |
 | Fix `wf_update_job_opening` link validation (ignore_links flag) | 🔴 High | ❌ Update API on dev |
-| Sahil: `bench build --app workforce` (latest Vue not compiled) | 🔴 High | ⚠️ Waiting on Sahil |
+| Clean up test WF Interview records + test Google Calendar events | Medium | ❌ After E2E test |
+| Decide with Shail: keep or delete standalone wf_google_* scripts | Medium | ❌ Pending decision |
+| Review duplicate interview emails on prod (Email Notification vs script sendmail) | Medium | ❌ Before prod migration |
+| Consider converting WF Google Settings to true Single doctype | Medium | ❌ Before prod migration |
+| Restore applicant "Interview Scheduled" status flow — verify After Save event chain works with new script | Medium | ❌ Verify in E2E test |
 | Create WF Prospect doctype | High | ❌ Not started |
 | Create wf_import_prospects API | High | ❌ Not started |
 | Create wf_send_invite API | High | ❌ Not started |
 | Create wf_bulk_invite API | High | ❌ Not started |
-| Create Email Notification: WF - Interview Assigned to Interviewer | Medium | ❌ Not created |
-| Fix SMTP email delivery | Medium | ⚠️ Blocked on Sahil |
 | Create wf_* APIs for template CRUD (save/delete) | Low | ❌ Optional |
-| Complete end-to-end lifecycle test via Workforce Hub | High | ❌ After deploy |
 | Delete old Web Pages (/recruitment-dashboard, /interview-calendar) | Low | After Workforce Hub verified |
 | Get SSH access for Vamshi (self-deploy) | Medium | ❌ Ask Sahil/Priyanshi |
+| Production Google credentials (CCP Workspace) from Priyesh/HR | Medium | ⚠️ Requested Aug 20 |
 
 ---
 
@@ -258,4 +299,4 @@
 
 | Object | Type | Action | Date | Reason |
 |---|---|---|---|---|
-| — | — | — | — | — |
+| wf schedule interviews (name with spaces) | Server Script (API) | Disabled on dev | Aug 21, 2026 | Duplicate api_method with wf_schedule_interviews — was intercepting calls. Delete manually on dev + verify never existed on prod |

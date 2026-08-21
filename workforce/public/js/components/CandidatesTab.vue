@@ -179,6 +179,9 @@
 </template>
 
 <script>
+
+// Deploy trigger: Google Meet integration - Aug 21
+
 import Badge from './shared/Badge.vue';
 import KpiCard from './shared/KpiCard.vue';
 import Dialog from './shared/Dialog.vue';

@@ -201,17 +201,6 @@
 									<label>Duration (minutes)</label>
 									<input v-model.number="round.duration" type="number" min="15" class="form-input" placeholder="45" />
 								</div>
-								<div class="form-group">
-									<label>Round Type</label>
-									<select v-model="round.round_type" class="form-input">
-										<option value="Technical">Technical</option>
-										<option value="HR">HR</option>
-										<option value="Managerial">Managerial</option>
-										<option value="Screening">Screening</option>
-										<option value="Cultural Fit">Cultural Fit</option>
-										<option value="Other">Other</option>
-									</select>
-								</div>
 							</div>
 						</div>
 					</div>
@@ -259,7 +248,6 @@
 					<div v-for="(r, i) in selectedTemplate.rounds" :key="i" class="round-detail">
 						<div class="round-detail-header">
 							<strong>Round {{ i + 1 }}: {{ r.round_name }}</strong>
-							<Badge v-if="r.round_type" :label="r.round_type" />
 						</div>
 						<div class="round-detail-info">
 							<span v-if="r.default_interviewer">Interviewer: {{ r.default_interviewer }}</span>
@@ -290,7 +278,6 @@ export default {
 	data() {
 		return {
 			subView: 'jobs',
-			// Jobs
 			jobs: [],
 			loading: false,
 			saving: false,
@@ -301,10 +288,6 @@ export default {
 			editingJob: null,
 			selectedJob: null,
 			form: this.emptyForm(),
-			departments: [],
-			designations: [],
-			interviewers: [],
-			// Templates
 			templates: [],
 			templatesLoading: false,
 			showTemplateDialog: false,
@@ -312,7 +295,9 @@ export default {
 			editingTemplate: null,
 			selectedTemplate: null,
 			templateForm: this.emptyTemplateForm(),
-			// Toast
+			departments: [],
+			designations: [],
+			interviewers: [],
 			toast: { show: false, msg: '', type: 'success' }
 		};
 	},
@@ -351,7 +336,7 @@ export default {
 		emptyTemplateForm() {
 			return {
 				template_name: '',
-				rounds: [{ round_name: '', default_interviewer: '', duration: 45, round_type: 'Technical' }]
+				rounds: [{ round_name: '', default_interviewer: '', duration: 45 }]
 			};
 		},
 
@@ -368,6 +353,7 @@ export default {
 		},
 
 		// ───── JOBS ─────
+
 		async loadJobs() {
 			this.loading = true;
 			try {
@@ -376,6 +362,40 @@ export default {
 				this.showToast('Failed to load jobs', 'error');
 			}
 			this.loading = false;
+		},
+
+		async loadDepartments() {
+			try {
+				this.departments = await this.api('frappe.client.get_list', {
+					doctype: 'Department',
+					fields: ['name'],
+					limit_page_length: 0,
+					order_by: 'name asc'
+				});
+			} catch (e) { this.departments = []; }
+		},
+
+		async loadDesignations() {
+			try {
+				this.designations = await this.api('frappe.client.get_list', {
+					doctype: 'Designation',
+					fields: ['name'],
+					limit_page_length: 0,
+					order_by: 'name asc'
+				});
+			} catch (e) { this.designations = []; }
+		},
+
+		async loadInterviewers() {
+			try {
+				this.interviewers = await this.api('frappe.client.get_list', {
+					doctype: 'User',
+					fields: ['name', 'full_name'],
+					filters: { enabled: 1, user_type: 'System User' },
+					limit_page_length: 0,
+					order_by: 'full_name asc'
+				});
+			} catch (e) { this.interviewers = []; }
 		},
 
 		openCreateDialog() {
@@ -479,40 +499,6 @@ export default {
 			this.showPanel = true;
 		},
 
-		async loadDepartments() {
-			try {
-				this.departments = await this.api('frappe.client.get_list', {
-					doctype: 'Department',
-					fields: ['name'],
-					limit_page_length: 0,
-					order_by: 'name asc'
-				});
-			} catch (e) { this.departments = []; }
-		},
-
-		async loadDesignations() {
-			try {
-				this.designations = await this.api('frappe.client.get_list', {
-					doctype: 'Designation',
-					fields: ['name'],
-					limit_page_length: 0,
-					order_by: 'name asc'
-				});
-			} catch (e) { this.designations = []; }
-		},
-
-		async loadInterviewers() {
-			try {
-				this.interviewers = await this.api('frappe.client.get_list', {
-					doctype: 'User',
-					fields: ['name', 'full_name'],
-					filters: { enabled: 1, user_type: 'System User' },
-					limit_page_length: 0,
-					order_by: 'full_name asc'
-				});
-			} catch (e) { this.interviewers = []; }
-		},
-
 		// ───── TEMPLATES ─────
 
 		async loadTemplates() {
@@ -533,8 +519,7 @@ export default {
 					rounds: (template.rounds || []).map(r => ({
 						round_name: r.round_name || '',
 						default_interviewer: r.default_interviewer || '',
-						duration: r.duration || 45,
-						round_type: r.round_type || 'Technical'
+						duration: r.duration || 45
 					}))
 				};
 			} else {
@@ -546,7 +531,7 @@ export default {
 		},
 
 		addRound() {
-			this.templateForm.rounds.push({ round_name: '', default_interviewer: '', duration: 45, round_type: 'Technical' });
+			this.templateForm.rounds.push({ round_name: '', default_interviewer: '', duration: 45 });
 		},
 
 		removeRound(index) {
@@ -571,8 +556,7 @@ export default {
 						.map(r => ({
 							round_name: r.round_name.trim(),
 							default_interviewer: r.default_interviewer || '',
-							duration: r.duration || 45,
-							round_type: r.round_type || 'Technical'
+							duration: r.duration || 45
 						}))
 				};
 				if (this.editingTemplate) {
@@ -623,7 +607,6 @@ export default {
 </script>
 
 <style scoped>
-/* Sub Navigation */
 .sub-nav {
 	display: flex;
 	gap: 0;
@@ -642,13 +625,8 @@ export default {
 	color: #6b7280;
 	cursor: pointer;
 }
-.sub-nav button.active {
-	background: #4f46e5;
-	color: #fff;
-}
-.sub-nav button:not(:last-child) {
-	border-right: 1px solid #e5e7eb;
-}
+.sub-nav button.active { background: #4f46e5; color: #fff; }
+.sub-nav button:not(:last-child) { border-right: 1px solid #e5e7eb; }
 
 .tab-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
 .tab-header h2 { margin: 0; font-size: 20px; font-weight: 600; }
@@ -685,7 +663,6 @@ export default {
 .checkbox-label { display: flex; align-items: center; gap: 4px; font-size: 13px; color: #6b7280; white-space: nowrap; }
 .remove-btn { flex-shrink: 0; }
 
-/* Template Rounds */
 .rounds-list { display: flex; flex-direction: column; gap: 12px; }
 .round-card { padding: 16px; border: 1px solid #e5e7eb; border-radius: 8px; background: #f9fafb; }
 .round-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
@@ -694,7 +671,6 @@ export default {
 .round-detail-header { display: flex; justify-content: space-between; align-items: center; }
 .round-detail-info { font-size: 13px; color: #6b7280; margin-top: 4px; }
 
-/* Detail Panel */
 .detail-content { display: flex; flex-direction: column; gap: 16px; }
 .detail-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #f3f4f6; }
 .detail-label { font-size: 13px; font-weight: 600; color: #6b7280; }

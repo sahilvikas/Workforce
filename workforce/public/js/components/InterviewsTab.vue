@@ -496,9 +496,11 @@ export default {
 			this.saving = true;
 			try {
 				await this.api('wf_reschedule_interview', {
-					interview_name: this.selected.name,
-					scheduled_date: this.rescheduleForm.date,
-					scheduled_time: this.rescheduleForm.time || this.selected.scheduled_time
+					data: {
+						interview: this.selected.name,
+						scheduled_date: this.rescheduleForm.date,
+						scheduled_time: this.rescheduleForm.time || this.selected.scheduled_time
+					}
 				});
 				this.selected.scheduled_date = this.rescheduleForm.date;
 				if (this.rescheduleForm.time) this.selected.scheduled_time = this.rescheduleForm.time;
@@ -514,7 +516,9 @@ export default {
 			this.saving = true;
 			try {
 				await this.api('wf_cancel_interview', {
-					interview_name: this.selected.name
+					data: {
+						interview: this.selected.name
+					}
 				});
 				this.selected.status = 'Cancelled';
 				this.showToast('Interview cancelled');
@@ -603,6 +607,7 @@ export default {
 .event-in-progress { background: #fff7ed; border-color: #f59e0b; }
 .event-completed { background: #f0fdf4; border-color: #22c55e; }
 .event-cancelled { background: #f9fafb; border-color: #9ca3af; }
+.event-rescheduled { background: #fdf4ff; border-color: #a855f7; }
 .event-time { font-weight: 700; color: #374151; }
 .event-name { font-weight: 600; color: #111827; margin-top: 2px; }
 .event-round { color: #6b7280; }

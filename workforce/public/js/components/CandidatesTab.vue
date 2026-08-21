@@ -136,6 +136,7 @@
 							<span v-if="iv.interviewer"> · {{ iv.interviewer }}</span>
 							<span v-if="iv.rating"> · Rating: {{ iv.rating }}/5</span>
 						</div>
+						<a v-if="iv.google_meet_link" :href="iv.google_meet_link" target="_blank" class="btn-link" style="display:inline-block; margin-top:6px;">Join Google Meet</a>
 						<div v-if="iv.recommendation" class="iv-rec"><Badge :label="iv.recommendation" /></div>
 					</div>
 				</div>
@@ -158,6 +159,7 @@
 						<div class="form-group"><label>Interviewer (User email)</label><input v-model="round.interviewer" class="form-input" placeholder="e.g. john@company.com" /></div>
 						<div class="form-group"><label>Date *</label><input v-model="round.date" type="date" class="form-input" /></div>
 						<div class="form-group"><label>Time</label><input v-model="round.time" type="time" class="form-input" /></div>
+						<div class="form-group"><label>Duration (min)</label><input v-model.number="round.duration_minutes" type="number" class="form-input" placeholder="30" /></div>
 					</div>
 				</div>
 			</div>
@@ -291,7 +293,7 @@ export default {
 			try {
 				this.interviews = await this.api('frappe.client.get_list', {
 					doctype: 'WF Interview',
-					fields: ['name', 'round_number', 'round_name', 'interviewer', 'scheduled_date', 'scheduled_time', 'status', 'rating', 'recommendation', 'feedback'],
+					fields: ['name', 'round_number', 'round_name', 'interviewer', 'scheduled_date', 'scheduled_time', 'status', 'rating', 'recommendation', 'feedback', 'google_meet_link'],
 					filters: { applicant: candidate.name },
 					order_by: 'round_number asc'
 				});
@@ -315,13 +317,14 @@ export default {
 							round_name: r.round_name || '',
 							interviewer: r.default_interviewer || '',
 							date: '',
-							time: ''
+							time: '',
+							duration_minutes: r.duration_minutes || 30
 						}));
 					}
 				} catch (e) { /* no template — user adds manually */ }
 			}
 			if (this.scheduleForm.rounds.length === 0) {
-				this.scheduleForm.rounds = [{ round_name: '', interviewer: '', date: '', time: '' }];
+				this.scheduleForm.rounds = [{ round_name: '', interviewer: '', date: '', time: '', duration_minutes: 30 }];
 			}
 		},
 
@@ -346,7 +349,7 @@ export default {
 		},
 
 		addRound() {
-			this.scheduleForm.rounds.push({ round_name: '', interviewer: '', date: '', time: '' });
+			this.scheduleForm.rounds.push({ round_name: '', interviewer: '', date: '', time: '', duration_minutes: 30 });
 		},
 
 		async scheduleInterviews() {
@@ -358,7 +361,14 @@ export default {
 					data: {
 						applicant: this.selected.name,
 						job_opening: this.selected.job_opening,
-						rounds: this.scheduleForm.rounds
+						rounds: this.scheduleForm.rounds.map((r, idx) => ({
+							round_name: r.round_name,
+							round_number: idx + 1,
+							interviewer: r.interviewer,
+							scheduled_date: r.date,
+							scheduled_time: r.time,
+							duration_minutes: r.duration_minutes || 30
+						}))
 					}
 				});
 				this.selected.status = 'Interview Scheduled';

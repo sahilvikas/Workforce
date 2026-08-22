@@ -372,15 +372,8 @@ export default {
 				const allInterviews = res.interviews || res || [];
 
 				// Check if user is HR Manager
-				try {
-					const roles = await this.api('frappe.client.get_list', {
-						doctype: 'Has Role',
-						filters: { parent: frappe.session.user, role: 'WF HR Manager' },
-						fields: ['name'],
-						limit_page_length: 1
-					});
-					this.isHR = roles && roles.length > 0;
-				} catch (e) { this.isHR = false; }
+				const userRoles = (window.frappe && frappe.user_roles) || [];
+				this.isHR = userRoles.includes('WF HR Manager') || userRoles.includes('System Manager');
 
 				if (this.isHR) {
 					this.interviews = allInterviews;

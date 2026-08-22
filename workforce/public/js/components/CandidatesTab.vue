@@ -156,7 +156,10 @@
 					<h4>Round {{ i + 1 }}: {{ round.round_name || 'Interview' }}</h4>
 					<div class="form-grid">
 						<div class="form-group"><label>Round Name</label><input v-model="round.round_name" class="form-input" placeholder="e.g. Technical Round" /></div>
-						<div class="form-group"><label>Interviewer (User email)</label><input v-model="round.interviewer" class="form-input" placeholder="e.g. john@company.com" /></div>
+						<div class="form-group"><label>Interviewer</label><select v-model="round.interviewer" class="form-input">
+							<option value="">— Select Interviewer —</option>
+							<option v-for="u in interviewers" :key="u.name" :value="u.name">{{ u.full_name || u.name }} ({{ u.name }})</option>
+						</select></div>
 						<div class="form-group"><label>Date *</label><input v-model="round.date" type="date" class="form-input" /></div>
 						<div class="form-group"><label>Time</label><input v-model="round.time" type="time" class="form-input" /></div>
 						<div class="form-group"><label>Duration (min)</label><input v-model.number="round.duration_minutes" type="number" class="form-input" placeholder="30" /></div>
@@ -209,6 +212,7 @@ export default {
 			showScheduleDialog: false,
 			showOfferDialog: false,
 			templateRounds: [],
+			interviewers: [],
 			scheduleForm: { rounds: [] },
 			offerForm: { designation: '', annual_ctc: '', start_date: '', terms: '' },
 			toast: { show: false, msg: '', type: 'success' },
@@ -237,6 +241,7 @@ export default {
 	mounted() {
 		this.loadCandidates();
 		this.loadJobs();
+		this.loadInterviewers();
 	},
 
 	methods: {
@@ -287,6 +292,18 @@ export default {
 					this.jobs = await this.api('wf_get_job_openings');
 				} catch (e2) { /* silent */ }
 			}
+		},
+
+		async loadInterviewers() {
+			try {
+				this.interviewers = await this.api('frappe.client.get_list', {
+					doctype: 'User',
+					fields: ['name', 'full_name'],
+					filters: { enabled: 1, user_type: 'System User' },
+					limit_page_length: 0,
+					order_by: 'full_name asc'
+				});
+			} catch (e) { this.interviewers = []; }
 		},
 
 		async openDetail(candidate) {

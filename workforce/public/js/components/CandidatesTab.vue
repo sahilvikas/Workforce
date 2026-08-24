@@ -400,16 +400,28 @@ export default {
             return 'score-low';
         },
         async loadCandidates() {
-            this.loading = true;
-            try {
-                const res = await this.api('wf_get_dashboard_data');
-                this.candidates = res.applicants || [];
-                this.stats = res.stats || {};
-            } catch (e) {
-                this.showToast('Failed to load candidates', 'error');
-            }
-            this.loading = false;
-        },
+			this.loading = true;
+			try {
+				const res = await this.api('wf_get_dashboard_data');
+				// API returns bare array of applicants; compute stats locally
+				this.candidates = Array.isArray(res) ? res : (res.applicants || []);
+				this.stats = this.computeStats(this.candidates);
+			} catch (e) {
+				this.showToast('Failed to load candidates', 'error');
+			}
+			this.loading = false;
+		},
+		computeStats(list) {
+			const inInterviewStatuses = ['Interview Scheduled', 'Interview In Progress', 'All Rounds Complete'];
+			const offerStatuses = ['Offer Sent', 'Offer Accepted', 'Offer Declined'];
+			return {
+				total: list.length,
+				shortlisted: list.filter(c => c.status === 'Shortlisted').length,
+				in_interviews: list.filter(c => inInterviewStatuses.includes(c.status)).length,
+				selected: list.filter(c => c.status === 'Selected').length,
+				offer_sent: list.filter(c => offerStatuses.includes(c.status)).length
+			};
+		},
         async loadJobs() {
             try {
                 const res = await this.api('wf_get_job_openings');

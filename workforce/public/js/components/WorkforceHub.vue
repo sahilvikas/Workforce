@@ -10,7 +10,7 @@
 		<div class="wf-tabs">
 			<div class="wf-container wf-tabs-inner">
 				<button
-					v-for="tab in tabs"
+					v-for="tab in visibleTabs"
 					:key="tab.key"
 					class="wf-tab-btn"
 					:class="{ active: activeTab === tab.key }"
@@ -26,6 +26,7 @@
 			<div class="wf-container">
 				<JobsTab v-if="activeTab === 'jobs'" />
 				<RequisitionsTab v-if="activeTab === 'requisitions'" />
+				<ApprovalsTab v-if="activeTab === 'approvals'" />
 				<CandidatesTab v-if="activeTab === 'candidates'" />
 				<InterviewsTab v-if="activeTab === 'interviews'" />
 				<TalentSearchTab v-if="activeTab === 'talent'" />
@@ -37,31 +38,51 @@
 <script>
 import JobsTab from './JobsTab.vue';
 import RequisitionsTab from './RequisitionsTab.vue';
+import ApprovalsTab from './ApprovalsTab.vue';
 import CandidatesTab from './CandidatesTab.vue';
 import InterviewsTab from './InterviewsTab.vue';
 import TalentSearchTab from './TalentSearchTab.vue';
 
 export default {
 	name: 'WorkforceHub',
-	components: { JobsTab, RequisitionsTab, CandidatesTab, InterviewsTab, TalentSearchTab },
+	components: { JobsTab, RequisitionsTab, ApprovalsTab, CandidatesTab, InterviewsTab, TalentSearchTab },
 
 	data() {
 		return {
 			activeTab: 'jobs',
-			tabs: [
-				{ key: 'jobs', label: 'Jobs', icon: '📋' },
-				{ key: 'requisitions', label: 'Requisitions', icon: '📝' },
-				{ key: 'candidates', label: 'Candidates', icon: '👥' },
-				{ key: 'interviews', label: 'Interviews', icon: '🗓️' },
-				{ key: 'talent', label: 'Talent Search', icon: '🔍' }
+			userRoles: [],
+			allTabs: [
+				{ key: 'jobs', label: 'Jobs', icon: '📋', roles: ['*'] },
+				{ key: 'requisitions', label: 'Requisitions', icon: '📝', roles: ['*'] },
+				{ key: 'approvals', label: 'Approvals', icon: '✅', roles: ['WF Leadership', 'System Manager'] },
+				{ key: 'candidates', label: 'Candidates', icon: '👥', roles: ['*'] },
+				{ key: 'interviews', label: 'Interviews', icon: '🗓️', roles: ['*'] },
+				{ key: 'talent', label: 'Talent Search', icon: '🔍', roles: ['*'] }
 			]
 		};
 	},
 
+	computed: {
+		visibleTabs() {
+			return this.allTabs.filter(tab => {
+				if (tab.roles.includes('*')) return true;
+				return tab.roles.some(r => this.userRoles.includes(r));
+			});
+		},
+
+		validKeys() {
+			return this.visibleTabs.map(t => t.key);
+		}
+	},
+
 	mounted() {
+		this.userRoles = (window.frappe && frappe.user_roles) || [];
+
 		const hash = (window.location.hash || '').replace('#', '');
-		if (['jobs', 'requisitions', 'candidates', 'interviews', 'talent'].includes(hash)) {
+		if (this.validKeys.includes(hash)) {
 			this.activeTab = hash;
+		} else {
+			this.activeTab = this.visibleTabs[0] ? this.visibleTabs[0].key : 'jobs';
 		}
 		window.addEventListener('hashchange', this.onHashChange);
 
@@ -86,7 +107,7 @@ export default {
 
 		onHashChange() {
 			const hash = (window.location.hash || '').replace('#', '');
-			if (['jobs', 'requisitions', 'candidates', 'interviews', 'talent'].includes(hash)) {
+			if (this.validKeys.includes(hash)) {
 				this.activeTab = hash;
 			}
 		}

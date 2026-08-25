@@ -4,11 +4,184 @@
 
 		<!-- Sub Navigation -->
 		<div class="sub-nav">
-			<button :class="{ active: subView === 'jobs' }" @click="subView = 'jobs'">Job Openings</button>
-			<button :class="{ active: subView === 'templates' }" @click="subView = 'templates'; loadTemplates()">Interview Templates</button>
+			<button :class="{ active: subView === 'dashboard' }" @click="switchSubView('dashboard')">Hiring Dashboard</button>
+			<button :class="{ active: subView === 'jobs' }" @click="switchSubView('jobs')">Job Openings</button>
+			<button :class="{ active: subView === 'templates' }" @click="switchSubView('templates')">Interview Templates</button>
 		</div>
 
-		<!-- ==================== JOB OPENINGS VIEW ==================== -->
+		<!-- ==================== HIRING DASHBOARD VIEW ==================== -->
+		<div v-if="subView === 'dashboard'">
+			<div class="tab-header">
+				<div>
+					<h2>Hiring Dashboard</h2>
+					<p class="tab-subtitle">Requisitions ready to publish, pending approvals, and live positions</p>
+				</div>
+			</div>
+
+			<!-- KPIs -->
+			<div class="kpi-row">
+				<KpiCard label="Awaiting HR Review" :value="approvedRequisitions.length" />
+				<KpiCard label="Pending Leadership" :value="pendingLeadershipRequisitions.length" />
+				<KpiCard label="Live Positions" :value="livePositions.length" />
+				<KpiCard label="On Hold" :value="onHoldPositions.length" />
+				<KpiCard label="Filled/Closed" :value="closedPositions.length" />
+			</div>
+
+			<!-- Section 1: Awaiting HR Review -->
+			<div v-if="approvedRequisitions.length > 0" class="section">
+				<div class="section-header approved-header">
+					<h3>
+						<span class="section-icon approved-icon">✓</span>
+						Awaiting HR Review
+					</h3>
+					<span class="section-count">{{ approvedRequisitions.length }}</span>
+					<span class="section-hint">Approved by leadership — ready to publish and assign to a recruiter</span>
+				</div>
+
+				<div class="req-cards">
+					<div v-for="r in approvedRequisitions" :key="r.name" class="req-card approved-card">
+						<div class="req-card-header">
+							<div>
+								<div class="req-title">
+									{{ r.title }}
+									<Badge label="Approved" />
+								</div>
+								<div class="req-meta">
+									<span class="meta-item"><strong>{{ r.team }}</strong></span>
+									<span class="meta-item">{{ r.position_level }}</span>
+									<span class="meta-item">{{ r.employment_type }}</span>
+									<span class="meta-item">{{ r.number_of_openings }} opening{{ r.number_of_openings > 1 ? 's' : '' }}</span>
+									<span v-if="r.compensation_range" class="meta-item">{{ r.compensation_range }}</span>
+								</div>
+								<div class="req-sub">
+									Requested by <strong>{{ r.requester_full_name || r.requester }}</strong> ·
+									Approved {{ formatDate(r.leadership_decision_on) }}
+								</div>
+							</div>
+						</div>
+						<div class="req-card-actions">
+							<button class="btn-secondary" @click="openReqDetail(r)">View Details</button>
+							<button class="btn-primary" @click="openPublishDialog(r)">
+								<span class="btn-icon">🚀</span> Publish + Assign
+							</button>
+						</div>
+					</div>
+				</div>
+			</div>
+
+			<!-- Section 2: Pending Leadership (read-only) -->
+			<div v-if="pendingLeadershipRequisitions.length > 0" class="section">
+				<div class="section-header pending-header">
+					<h3>
+						<span class="section-icon pending-icon">⏳</span>
+						Pending Leadership Approval
+					</h3>
+					<span class="section-count">{{ pendingLeadershipRequisitions.length }}</span>
+					<span class="section-hint">Waiting on Priyesh · Read-only</span>
+				</div>
+
+				<div class="table-wrapper compact">
+					<table class="wf-table">
+						<thead>
+							<tr>
+								<th>Position</th>
+								<th>Team</th>
+								<th>Openings</th>
+								<th>Requester</th>
+								<th>Days Pending</th>
+							</tr>
+						</thead>
+						<tbody>
+							<tr v-for="r in pendingLeadershipRequisitions" :key="r.name" class="clickable-row" @click="openReqDetail(r)">
+								<td class="req-title-cell">
+									{{ r.title }}
+									<span v-if="r.revision_count && r.revision_count > 0" class="rev-badge">v{{ r.revision_count + 1 }}</span>
+								</td>
+								<td>{{ r.team }}</td>
+								<td>{{ r.number_of_openings }}</td>
+								<td>{{ r.requester_full_name || r.requester }}</td>
+								<td :class="daysClass(r)">{{ r.days_pending }}d</td>
+							</tr>
+						</tbody>
+					</table>
+				</div>
+			</div>
+
+			<!-- Section 3: Live Positions -->
+			<div class="section">
+				<div class="section-header live-header">
+					<h3>
+						<span class="section-icon live-icon">🟢</span>
+						Live Positions
+					</h3>
+					<span class="section-count">{{ livePositions.length }}</span>
+					<span class="section-hint">Published positions currently accepting or paused</span>
+				</div>
+
+				<div class="filters-row" v-if="livePositions.length > 0 || onHoldPositions.length > 0">
+					<input v-model="dashboardSearch" type="text" placeholder="Search live positions..." class="search-input" />
+					<select v-model="dashboardStatusFilter" class="filter-select">
+						<option value="">Open + On Hold</option>
+						<option value="Open">Open only</option>
+						<option value="On Hold">On Hold only</option>
+						<option value="Closed">Closed</option>
+					</select>
+				</div>
+
+				<div class="table-wrapper" v-if="filteredLivePositions.length > 0">
+					<table class="wf-table">
+						<thead>
+							<tr>
+								<th>Position</th>
+								<th>Team</th>
+								<th>Openings</th>
+								<th>HR Owner</th>
+								<th>Priority</th>
+								<th>Applicants</th>
+								<th>Status</th>
+								<th>Days Live</th>
+								<th>Actions</th>
+							</tr>
+						</thead>
+						<tbody>
+							<tr v-for="pos in filteredLivePositions" :key="pos.name" class="clickable-row" @click="openPositionDetail(pos)">
+								<td class="req-title-cell">{{ pos.job_title }}</td>
+								<td>{{ pos.department || '—' }}</td>
+								<td>{{ pos.no_of_positions || 1 }}</td>
+								<td>
+									<span v-if="pos.assigned_hr" class="owner-chip">
+										{{ pos.assigned_hr_name || pos.assigned_hr }}
+									</span>
+									<span v-else class="unassigned">Unassigned</span>
+								</td>
+								<td>
+									<span v-if="pos.priority" :class="'priority-' + pos.priority.toLowerCase()">{{ pos.priority }}</span>
+									<span v-else>—</span>
+								</td>
+								<td>{{ pos.applicant_count || 0 }}</td>
+								<td><Badge :label="pos.status" /></td>
+								<td>{{ daysSincePosted(pos.posted_on) }}d</td>
+								<td @click.stop>
+									<button class="btn-link" @click="openPositionActionMenu(pos, $event)">Actions ▾</button>
+								</td>
+							</tr>
+						</tbody>
+					</table>
+				</div>
+				<div v-else class="empty-state">
+					<p>No live positions yet. Publish an approved requisition to create one.</p>
+				</div>
+			</div>
+
+			<!-- Empty overall state -->
+			<div v-if="approvedRequisitions.length === 0 && pendingLeadershipRequisitions.length === 0 && livePositions.length === 0" class="empty-state large">
+				<div class="empty-icon">📋</div>
+				<h3>No active hiring activity</h3>
+				<p>When managers submit requisitions, they'll appear here after Priyesh approves them.</p>
+			</div>
+		</div>
+
+		<!-- ==================== JOB OPENINGS VIEW (unchanged) ==================== -->
 		<div v-if="subView === 'jobs'">
 			<div class="tab-header">
 				<h2>Job Openings</h2>
@@ -70,7 +243,7 @@
 			</div>
 		</div>
 
-		<!-- ==================== INTERVIEW TEMPLATES VIEW ==================== -->
+		<!-- ==================== INTERVIEW TEMPLATES VIEW (unchanged) ==================== -->
 		<div v-if="subView === 'templates'">
 			<div class="tab-header">
 				<h2>Interview Templates</h2>
@@ -104,7 +277,129 @@
 			</div>
 		</div>
 
-		<!-- ==================== JOB CREATE/EDIT DIALOG ==================== -->
+		<!-- ==================== PUBLISH + ASSIGN DIALOG ==================== -->
+		<Dialog :visible="showPublishDialog" title="Publish + Assign Requisition" submitLabel="Publish"
+			:loading="publishing" size="md" @close="showPublishDialog = false" @submit="publishRequisition">
+			<div v-if="publishReq" class="publish-preview">
+				<div class="publish-title">{{ publishReq.title }}</div>
+				<div class="publish-meta">
+					{{ publishReq.team }} · {{ publishReq.number_of_openings }} opening{{ publishReq.number_of_openings > 1 ? 's' : '' }} ·
+					{{ publishReq.position_level }} · {{ publishReq.employment_type }}
+				</div>
+			</div>
+
+			<div class="form-group full">
+				<label>HR Owner *</label>
+				<select v-model="publishForm.hr_owner" class="form-input">
+					<option value="">— Select recruiter —</option>
+					<optgroup label="Recruitment Coordinators">
+						<option v-for="u in recruitmentCoordinators" :key="u.name" :value="u.name">
+							{{ u.full_name || u.name }}
+						</option>
+					</optgroup>
+					<optgroup label="HR Manager (Caretaker)">
+						<option v-for="u in hrManagers" :key="u.name" :value="u.name">
+							{{ u.full_name || u.name }} (self)
+						</option>
+					</optgroup>
+				</select>
+				<p class="field-hint">Recruiter will handle screening, interviews, and offers for this position.</p>
+			</div>
+
+			<div class="form-group full">
+				<label>Priority</label>
+				<div class="priority-picker">
+					<label v-for="p in ['High', 'Medium', 'Low']" :key="p" class="priority-option" :class="{ selected: publishForm.priority === p, ['priority-' + p.toLowerCase()]: true }">
+						<input type="radio" :value="p" v-model="publishForm.priority" />
+						<span>{{ p }}</span>
+					</label>
+				</div>
+			</div>
+
+			<div class="form-group full">
+				<label>Interview Template (optional)</label>
+				<select v-model="publishForm.interview_template" class="form-input">
+					<option value="">— Recruiter will set later —</option>
+					<option v-for="t in templates" :key="t.name" :value="t.name">{{ t.template_name || t.name }}</option>
+				</select>
+				<p class="field-hint">Pre-selecting a template speeds up interview scheduling.</p>
+			</div>
+
+			<div class="dialog-note publish-note">
+				This will create a Job Opening from this requisition and notify the assigned recruiter + requester.
+			</div>
+		</Dialog>
+
+		<!-- ==================== POSITION ACTION DIALOG (Hold / Close / Reactivate / Reassign) ==================== -->
+		<Dialog :visible="showActionDialog" :title="actionDialogTitle" :submitLabel="actionSubmitLabel"
+			:loading="actioning" size="md" @close="showActionDialog = false" @submit="submitPositionAction">
+			<div v-if="actionPosition" class="publish-preview">
+				<div class="publish-title">{{ actionPosition.job_title }}</div>
+				<div class="publish-meta">Current status: <Badge :label="actionPosition.status" /></div>
+			</div>
+
+			<!-- Reason field (for hold/close) -->
+			<div v-if="actionType === 'hold' || actionType === 'close'" class="form-group full">
+				<label>Reason *</label>
+				<textarea v-model="actionForm.reason" class="form-input form-textarea" rows="3"
+					:placeholder="actionType === 'hold' ? 'e.g. Budget review pending, waiting on client confirmation...' : 'e.g. Position filled internally, requirements changed...'"></textarea>
+			</div>
+
+			<!-- New owner field (for reassign) -->
+			<div v-if="actionType === 'reassign'" class="form-group full">
+				<label>New HR Owner *</label>
+				<select v-model="actionForm.new_owner" class="form-input">
+					<option value="">— Select new recruiter —</option>
+					<optgroup label="Recruitment Coordinators">
+						<option v-for="u in recruitmentCoordinators" :key="u.name" :value="u.name">
+							{{ u.full_name || u.name }}
+						</option>
+					</optgroup>
+					<optgroup label="HR Manager (Caretaker)">
+						<option v-for="u in hrManagers" :key="u.name" :value="u.name">
+							{{ u.full_name || u.name }}
+						</option>
+					</optgroup>
+				</select>
+				<p class="field-hint" v-if="actionPosition && actionPosition.assigned_hr">
+					Currently assigned to {{ actionPosition.assigned_hr_name || actionPosition.assigned_hr }}
+				</p>
+			</div>
+
+			<!-- Reactivate has no fields -->
+			<div v-if="actionType === 'reactivate'" class="dialog-note reactivate-note">
+				This position will be Open again and start accepting new applications.
+				Existing candidates in the pipeline are already active.
+			</div>
+
+			<div v-if="actionType === 'hold'" class="dialog-note hold-note">
+				New applications will be blocked. Existing candidates in interviews/offers continue normally.
+			</div>
+
+			<div v-if="actionType === 'close'" class="dialog-note close-note">
+				This position will be permanently closed. All recruitment activity stops.
+			</div>
+		</Dialog>
+
+		<!-- ==================== ACTION MENU (contextual) ==================== -->
+		<div v-if="actionMenuVisible" class="action-menu-backdrop" @click="actionMenuVisible = false">
+			<div class="action-menu" :style="actionMenuStyle" @click.stop>
+				<button v-if="actionMenuPos.status === 'Open'" class="menu-item" @click="startAction('hold')">
+					<span class="menu-icon">⏸</span> Put on Hold
+				</button>
+				<button v-if="actionMenuPos.status === 'On Hold'" class="menu-item" @click="startAction('reactivate')">
+					<span class="menu-icon">▶</span> Reactivate
+				</button>
+				<button v-if="actionMenuPos.status !== 'Closed'" class="menu-item" @click="startAction('reassign')">
+					<span class="menu-icon">↻</span> Reassign Owner
+				</button>
+				<button v-if="actionMenuPos.status !== 'Closed'" class="menu-item menu-danger" @click="startAction('close')">
+					<span class="menu-icon">✗</span> Close Position
+				</button>
+			</div>
+		</div>
+
+		<!-- ==================== EXISTING JOB CREATE/EDIT DIALOG (unchanged) ==================== -->
 		<Dialog :visible="showDialog" :title="editingJob ? 'Edit Job Opening' : 'New Job Opening'" :submitLabel="editingJob ? 'Update' : 'Create'" :loading="saving" size="lg" @close="closeDialog" @submit="saveJob">
 			<div class="form-grid">
 				<div class="form-group full">
@@ -170,7 +465,7 @@
 			</div>
 		</Dialog>
 
-		<!-- ==================== TEMPLATE CREATE/EDIT DIALOG ==================== -->
+		<!-- ==================== EXISTING TEMPLATE CREATE/EDIT DIALOG (unchanged) ==================== -->
 		<Dialog :visible="showTemplateDialog" :title="editingTemplate ? 'Edit Interview Template' : 'New Interview Template'" :submitLabel="editingTemplate ? 'Update' : 'Create'" :loading="saving" size="lg" @close="showTemplateDialog = false" @submit="saveTemplate">
 			<div class="form-grid">
 				<div class="form-group full">
@@ -209,7 +504,62 @@
 			</div>
 		</Dialog>
 
-		<!-- ==================== JOB DETAIL PANEL ==================== -->
+		<!-- ==================== REQUISITION DETAIL PANEL ==================== -->
+		<DetailPanel :visible="showReqDetailPanel" :title="selectedReq ? selectedReq.title : ''" size="lg" @close="showReqDetailPanel = false">
+			<div v-if="reqDetailData" class="detail-content">
+				<div class="detail-header-info">
+					<Badge :label="reqDetailData.requisition.status" />
+					<span class="detail-id">{{ reqDetailData.requisition.name }}</span>
+				</div>
+
+				<div class="detail-facts-grid">
+					<div class="fact-item"><div class="fact-label">Team</div><div class="fact-value">{{ reqDetailData.requisition.team }}</div></div>
+					<div class="fact-item"><div class="fact-label">Level</div><div class="fact-value">{{ reqDetailData.requisition.position_level }}</div></div>
+					<div class="fact-item"><div class="fact-label">Type</div><div class="fact-value">{{ reqDetailData.requisition.employment_type }}</div></div>
+					<div class="fact-item"><div class="fact-label">Openings</div><div class="fact-value">{{ reqDetailData.requisition.number_of_openings }}</div></div>
+					<div class="fact-item"><div class="fact-label">CTC Range</div><div class="fact-value">{{ reqDetailData.requisition.compensation_range || '—' }}</div></div>
+					<div class="fact-item"><div class="fact-label">Requester</div><div class="fact-value">{{ reqDetailData.requisition.requester_name }}</div></div>
+				</div>
+
+				<div class="detail-section highlight-section">
+					<div class="section-title">Business Justification</div>
+					<div class="section-body">{{ reqDetailData.requisition.business_justification }}</div>
+				</div>
+
+				<div class="detail-section">
+					<div class="section-title">Job Description</div>
+					<div class="section-body" v-html="reqDetailData.requisition.description"></div>
+				</div>
+
+				<div v-if="reqDetailData.requisition.required_skills" class="detail-section">
+					<div class="section-title">Required Skills</div>
+					<div class="section-body">{{ reqDetailData.requisition.required_skills }}</div>
+				</div>
+
+				<div class="detail-section">
+					<div class="section-title">Timeline</div>
+					<div class="timeline">
+						<div v-for="(t, i) in reqDetailData.timeline" :key="i" class="timeline-item">
+							<div class="timeline-dot"></div>
+							<div class="timeline-content">
+								<div class="timeline-event">{{ t.event }}</div>
+								<div class="timeline-meta">by {{ t.by }} · {{ formatDateTime(t.at) }}</div>
+								<div v-if="t.comment" class="timeline-comment">"{{ t.comment }}"</div>
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
+
+			<template #actions>
+				<button v-if="reqDetailData && reqDetailData.permissions.can_publish"
+					class="btn-primary" @click="openPublishFromDetail">
+					Publish + Assign
+				</button>
+			</template>
+		</DetailPanel>
+
+		<!-- ==================== EXISTING JOB DETAIL PANEL (unchanged) ==================== -->
 		<DetailPanel :visible="showPanel" :title="selectedJob ? selectedJob.job_title : ''" @close="showPanel = false">
 			<div v-if="selectedJob" class="detail-content">
 				<div class="detail-row"><span class="detail-label">Status</span><Badge :label="selectedJob.status" /></div>
@@ -219,6 +569,14 @@
 				<div class="detail-row"><span class="detail-label">Interview Template</span><span>{{ selectedJob.template_name || selectedJob.interview_template || '—' }}</span></div>
 				<div class="detail-row"><span class="detail-label">Posted</span><span>{{ formatDate(selectedJob.posted_on) }}</span></div>
 				<div class="detail-row"><span class="detail-label">Closing</span><span>{{ formatDate(selectedJob.closing_date) }}</span></div>
+				<div v-if="selectedJob.assigned_hr" class="detail-row">
+					<span class="detail-label">HR Owner</span>
+					<span>{{ selectedJob.assigned_hr_name || selectedJob.assigned_hr }}</span>
+				</div>
+				<div v-if="selectedJob.status_reason" class="detail-row">
+					<span class="detail-label">Status Reason</span>
+					<span>{{ selectedJob.status_reason }}</span>
+				</div>
 				<div v-if="selectedJob.description" class="detail-section">
 					<span class="detail-label">Description</span>
 					<div class="detail-desc" v-html="selectedJob.description"></div>
@@ -238,7 +596,7 @@
 			</template>
 		</DetailPanel>
 
-		<!-- ==================== TEMPLATE DETAIL PANEL ==================== -->
+		<!-- ==================== EXISTING TEMPLATE DETAIL PANEL (unchanged) ==================== -->
 		<DetailPanel :visible="showTemplatePanel" :title="selectedTemplate ? (selectedTemplate.template_name || selectedTemplate.name) : ''" @close="showTemplatePanel = false">
 			<div v-if="selectedTemplate" class="detail-content">
 				<div class="detail-row"><span class="detail-label">Template ID</span><span>{{ selectedTemplate.name }}</span></div>
@@ -277,7 +635,34 @@ export default {
 
 	data() {
 		return {
-			subView: 'jobs',
+			subView: 'dashboard',  // dashboard is new default
+			// Dashboard data
+			requisitions: [],
+			positions: [],
+			dashboardSearch: '',
+			dashboardStatusFilter: '',
+			publishReq: null,
+			publishForm: { hr_owner: '', priority: 'Medium', interview_template: '' },
+			publishing: false,
+			showPublishDialog: false,
+			showReqDetailPanel: false,
+			selectedReq: null,
+			reqDetailData: null,
+			hrManagers: [],
+			recruitmentCoordinators: [],
+			userNameMap: {},  // email → full_name
+
+			// Position actions
+			showActionDialog: false,
+			actionType: '',   // hold / close / reactivate / reassign
+			actionPosition: null,
+			actionForm: { reason: '', new_owner: '' },
+			actioning: false,
+			actionMenuVisible: false,
+			actionMenuPos: {},
+			actionMenuStyle: {},
+
+			// Existing Jobs data
 			jobs: [],
 			loading: false,
 			saving: false,
@@ -288,6 +673,8 @@ export default {
 			editingJob: null,
 			selectedJob: null,
 			form: this.emptyForm(),
+
+			// Existing Templates data
 			templates: [],
 			templatesLoading: false,
 			showTemplateDialog: false,
@@ -295,6 +682,8 @@ export default {
 			editingTemplate: null,
 			selectedTemplate: null,
 			templateForm: this.emptyTemplateForm(),
+
+			// Shared
 			departments: [],
 			designations: [],
 			interviewers: [],
@@ -303,6 +692,38 @@ export default {
 	},
 
 	computed: {
+		approvedRequisitions() {
+			return this.requisitions.filter(r => r.status === 'Approved');
+		},
+		pendingLeadershipRequisitions() {
+			return this.requisitions.filter(r => r.status === 'Pending Approval');
+		},
+		livePositions() {
+			return this.positions.filter(p => p.status === 'Open' || p.status === 'On Hold');
+		},
+		onHoldPositions() {
+			return this.positions.filter(p => p.status === 'On Hold');
+		},
+		closedPositions() {
+			return this.positions.filter(p => p.status === 'Closed');
+		},
+		filteredLivePositions() {
+			let list = this.positions;
+			if (this.dashboardStatusFilter) {
+				list = list.filter(p => p.status === this.dashboardStatusFilter);
+			} else {
+				list = list.filter(p => p.status === 'Open' || p.status === 'On Hold');
+			}
+			if (this.dashboardSearch) {
+				const q = this.dashboardSearch.toLowerCase();
+				list = list.filter(p =>
+					(p.job_title || '').toLowerCase().includes(q) ||
+					(p.department || '').toLowerCase().includes(q) ||
+					(p.assigned_hr_name || p.assigned_hr || '').toLowerCase().includes(q)
+				);
+			}
+			return list;
+		},
 		filteredJobs() {
 			return this.jobs.filter(j => {
 				const matchSearch = !this.searchQuery ||
@@ -311,15 +732,35 @@ export default {
 				const matchStatus = !this.statusFilter || j.status === this.statusFilter;
 				return matchSearch && matchStatus;
 			});
+		},
+		actionDialogTitle() {
+			const titles = {
+				hold: 'Put Position on Hold',
+				close: 'Close Position',
+				reactivate: 'Reactivate Position',
+				reassign: 'Reassign HR Owner'
+			};
+			return titles[this.actionType] || 'Action';
+		},
+		actionSubmitLabel() {
+			const labels = {
+				hold: 'Put on Hold',
+				close: 'Close Position',
+				reactivate: 'Reactivate',
+				reassign: 'Reassign'
+			};
+			return labels[this.actionType] || 'Confirm';
 		}
 	},
 
 	mounted() {
+		this.loadDashboardData();
 		this.loadJobs();
 		this.loadTemplates();
 		this.loadDepartments();
 		this.loadDesignations();
 		this.loadInterviewers();
+		this.loadHROwners();
 	},
 
 	methods: {
@@ -352,7 +793,233 @@ export default {
 			});
 		},
 
-		// ───── JOBS ─────
+		switchSubView(view) {
+			this.subView = view;
+			if (view === 'templates') this.loadTemplates();
+			if (view === 'jobs') this.loadJobs();
+			if (view === 'dashboard') this.loadDashboardData();
+		},
+
+		// ───── DASHBOARD ─────
+
+		async loadDashboardData() {
+			try {
+				// Load requisitions (for Awaiting HR Review + Pending Leadership sections)
+				const reqRes = await this.api('wf_get_requisitions');
+				this.requisitions = reqRes.requisitions || [];
+
+				// Load Job Openings (for Live Positions section)
+				this.positions = await this.api('wf_get_job_openings');
+
+				// Enrich positions with hr_owner names + applicant counts
+				await this.enrichPositions();
+			} catch (e) {
+				this.showToast('Failed to load dashboard data', 'error');
+			}
+		},
+
+		async enrichPositions() {
+			// Map emails → names for assigned_hr display
+			const emails = [...new Set(this.positions.map(p => p.assigned_hr).filter(Boolean))];
+			for (const email of emails) {
+				if (!this.userNameMap[email]) {
+					try {
+						const fullName = await this.api('frappe.client.get_value', {
+							doctype: 'User',
+							filters: { name: email },
+							fieldname: 'full_name'
+						});
+						this.userNameMap[email] = (fullName && fullName.full_name) || email.split('@')[0];
+					} catch (e) {
+						this.userNameMap[email] = email.split('@')[0];
+					}
+				}
+			}
+			this.positions = this.positions.map(p => ({
+				...p,
+				assigned_hr_name: p.assigned_hr ? this.userNameMap[p.assigned_hr] : ''
+			}));
+
+			// Load applicant counts
+			for (const pos of this.positions) {
+				if (pos.status !== 'Closed') {
+					try {
+						const count = await this.api('frappe.client.get_count', {
+							doctype: 'WF Applicant',
+							filters: { job_opening: pos.name }
+						});
+						pos.applicant_count = count || 0;
+					} catch (e) { pos.applicant_count = 0; }
+				}
+			}
+			// Force reactivity
+			this.positions = [...this.positions];
+		},
+
+		async loadHROwners() {
+			try {
+				// Get all users with WF Recruitment Coordinator role
+				const rcRoles = await this.api('frappe.client.get_list', {
+					doctype: 'Has Role',
+					filters: { role: 'WF Recruitment Coordinator', parenttype: 'User' },
+					fields: ['parent'],
+					limit_page_length: 0
+				});
+				const rcEmails = rcRoles.map(r => r.parent);
+				this.recruitmentCoordinators = [];
+				for (const email of rcEmails) {
+					try {
+						const u = await this.api('frappe.client.get_value', {
+							doctype: 'User',
+							filters: { name: email },
+							fieldname: ['full_name']
+						});
+						this.recruitmentCoordinators.push({ name: email, full_name: (u && u.full_name) || email });
+					} catch (e) {}
+				}
+
+				// HR Managers (for caretaker option)
+				const hrmRoles = await this.api('frappe.client.get_list', {
+					doctype: 'Has Role',
+					filters: { role: 'WF HR Manager', parenttype: 'User' },
+					fields: ['parent'],
+					limit_page_length: 0
+				});
+				const hrmEmails = hrmRoles.map(r => r.parent);
+				this.hrManagers = [];
+				for (const email of hrmEmails) {
+					try {
+						const u = await this.api('frappe.client.get_value', {
+							doctype: 'User',
+							filters: { name: email },
+							fieldname: ['full_name']
+						});
+						this.hrManagers.push({ name: email, full_name: (u && u.full_name) || email });
+					} catch (e) {}
+				}
+			} catch (e) {}
+		},
+
+		daysClass(r) {
+			if (r.days_pending > 7) return 'days-overdue';
+			if (r.days_pending > 4) return 'days-warning';
+			return 'days-normal';
+		},
+
+		daysSincePosted(postedOn) {
+			if (!postedOn) return 0;
+			const posted = new Date(postedOn);
+			const today = new Date();
+			return Math.floor((today - posted) / (1000 * 60 * 60 * 24));
+		},
+
+		async openReqDetail(req) {
+			this.selectedReq = req;
+			this.reqDetailData = null;
+			this.showReqDetailPanel = true;
+			try {
+				const res = await this.api('wf_get_requisition_detail', { requisition: req.name });
+				this.reqDetailData = res;
+			} catch (e) {
+				this.showToast('Failed to load requisition details', 'error');
+				this.showReqDetailPanel = false;
+			}
+		},
+
+		openPublishDialog(req) {
+			this.publishReq = req;
+			this.publishForm = { hr_owner: '', priority: 'Medium', interview_template: '' };
+			this.showPublishDialog = true;
+		},
+
+		openPublishFromDetail() {
+			if (!this.reqDetailData) return;
+			this.showReqDetailPanel = false;
+			this.openPublishDialog(this.reqDetailData.requisition);
+		},
+
+		async publishRequisition() {
+			if (!this.publishForm.hr_owner) {
+				this.showToast('Please select an HR owner', 'error');
+				return;
+			}
+			this.publishing = true;
+			try {
+				const res = await this.api('wf_hr_publish_requisition', {
+					data: {
+						requisition: this.publishReq.name,
+						hr_owner: this.publishForm.hr_owner,
+						priority: this.publishForm.priority,
+						interview_template: this.publishForm.interview_template
+					}
+				});
+				this.showToast(res.message || 'Requisition published');
+				this.showPublishDialog = false;
+				this.publishReq = null;
+				await this.loadDashboardData();
+			} catch (e) {
+				this.showToast('Failed to publish: ' + (e.message || 'Please try again'), 'error');
+			}
+			this.publishing = false;
+		},
+
+		openPositionActionMenu(pos, event) {
+			this.actionMenuPos = pos;
+			// Position menu near the click
+			const rect = event.target.getBoundingClientRect();
+			this.actionMenuStyle = {
+				top: (rect.bottom + window.scrollY + 4) + 'px',
+				left: (rect.left + window.scrollX - 140) + 'px'
+			};
+			this.actionMenuVisible = true;
+		},
+
+		startAction(type) {
+			this.actionType = type;
+			this.actionPosition = this.actionMenuPos;
+			this.actionForm = { reason: '', new_owner: '' };
+			this.actionMenuVisible = false;
+			this.showActionDialog = true;
+		},
+
+		async submitPositionAction() {
+			if ((this.actionType === 'hold' || this.actionType === 'close') && !this.actionForm.reason.trim()) {
+				this.showToast('Please provide a reason', 'error');
+				return;
+			}
+			if (this.actionType === 'reassign' && !this.actionForm.new_owner) {
+				this.showToast('Please select a new owner', 'error');
+				return;
+			}
+
+			this.actioning = true;
+			try {
+				const payload = {
+					job_opening: this.actionPosition.name,
+					action: this.actionType
+				};
+				if (this.actionForm.reason) payload.reason = this.actionForm.reason.trim();
+				if (this.actionForm.new_owner) payload.new_owner = this.actionForm.new_owner;
+
+				const res = await this.api('wf_hr_position_action', { data: payload });
+				this.showToast(res.message || 'Action completed');
+				this.showActionDialog = false;
+				this.actionType = '';
+				this.actionPosition = null;
+				await this.loadDashboardData();
+			} catch (e) {
+				this.showToast('Action failed: ' + (e.message || 'Please try again'), 'error');
+			}
+			this.actioning = false;
+		},
+
+		openPositionDetail(pos) {
+			// Reuse existing job detail panel
+			this.selectedJob = pos;
+			this.showPanel = true;
+		},
+
+		// ───── JOBS (unchanged from original) ─────
 
 		async loadJobs() {
 			this.loading = true;
@@ -499,7 +1166,7 @@ export default {
 			this.showPanel = true;
 		},
 
-		// ───── TEMPLATES ─────
+		// ───── TEMPLATES (unchanged from original) ─────
 
 		async loadTemplates() {
 			this.templatesLoading = true;
@@ -599,6 +1266,13 @@ export default {
 			return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 		},
 
+		formatDateTime(d) {
+			if (!d) return '—';
+			const date = new Date(d);
+			return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) +
+				' at ' + date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+		},
+
 		showToast(msg, type = 'success') {
 			this.toast = { show: true, msg, type };
 		}
@@ -628,28 +1302,263 @@ export default {
 .sub-nav button.active { background: #4f46e5; color: #fff; }
 .sub-nav button:not(:last-child) { border-right: 1px solid #e5e7eb; }
 
-.tab-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+.tab-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
 .tab-header h2 { margin: 0; font-size: 20px; font-weight: 600; }
-.btn-primary { background: #4f46e5; color: #fff; border: none; padding: 10px 20px; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 14px; }
+.tab-subtitle { margin: 4px 0 0; color: #6b7280; font-size: 14px; }
+
+.btn-primary { background: #4f46e5; color: #fff; border: none; padding: 10px 20px; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 14px; display: inline-flex; align-items: center; gap: 6px; }
 .btn-primary:hover { background: #4338ca; }
+.btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+.btn-secondary { background: #fff; color: #374151; border: 1px solid #d1d5db; padding: 10px 20px; border-radius: 8px; font-weight: 500; cursor: pointer; font-size: 14px; }
+.btn-secondary:hover { background: #f9fafb; }
 .btn-danger { background: #ef4444; color: #fff; border: none; padding: 10px 20px; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 14px; }
 .btn-link { background: none; border: none; color: #4f46e5; font-weight: 600; cursor: pointer; padding: 4px 8px; font-size: 13px; }
 .btn-link-danger { color: #ef4444; }
 .btn-icon { background: none; border: none; font-size: 20px; color: #ef4444; cursor: pointer; padding: 0 4px; }
-.kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px; margin-bottom: 20px; }
-.filters-row { display: flex; gap: 12px; margin-bottom: 20px; }
+
+.kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px; margin-bottom: 24px; }
+
+/* Dashboard sections */
+.section { margin-bottom: 32px; }
+.section-header {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	margin-bottom: 12px;
+	flex-wrap: wrap;
+}
+.section-header h3 {
+	margin: 0;
+	font-size: 16px;
+	font-weight: 700;
+	color: #111827;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+.section-icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 28px;
+	height: 28px;
+	border-radius: 50%;
+	font-size: 14px;
+}
+.approved-icon { background: #d1fae5; color: #065f46; }
+.pending-icon { background: #fef3c7; color: #92400e; }
+.live-icon { background: #dbeafe; color: #1e40af; }
+.section-count {
+	background: #f3f4f6;
+	color: #4b5563;
+	padding: 2px 12px;
+	border-radius: 12px;
+	font-size: 13px;
+	font-weight: 600;
+}
+.section-hint {
+	color: #6b7280;
+	font-size: 13px;
+}
+
+/* Requisition cards on dashboard */
+.req-cards { display: flex; flex-direction: column; gap: 12px; }
+.req-card {
+	background: #fff;
+	border: 1px solid #e5e7eb;
+	border-radius: 12px;
+	padding: 18px 20px;
+	transition: box-shadow 0.15s;
+}
+.req-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.06); }
+.approved-card { border-left: 4px solid #10b981; }
+
+.req-card-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: flex-start;
+	gap: 16px;
+	margin-bottom: 12px;
+}
+.req-title {
+	font-size: 16px;
+	font-weight: 700;
+	color: #111827;
+	margin-bottom: 6px;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex-wrap: wrap;
+}
+.req-meta {
+	display: flex;
+	gap: 12px;
+	flex-wrap: wrap;
+	margin-bottom: 4px;
+	color: #4b5563;
+	font-size: 13px;
+}
+.meta-item::after { content: '·'; margin-left: 12px; color: #d1d5db; }
+.meta-item:last-child::after { content: ''; margin: 0; }
+.req-sub { color: #6b7280; font-size: 13px; }
+.req-card-actions {
+	display: flex;
+	gap: 8px;
+	justify-content: flex-end;
+}
+
+.rev-badge {
+	display: inline-block; padding: 2px 6px; margin-left: 4px;
+	background: #fef3c7; color: #92400e; border-radius: 8px;
+	font-size: 10px; font-weight: 700;
+}
+
+.days-normal { color: #6b7280; font-size: 13px; }
+.days-warning { color: #f59e0b; font-weight: 600; font-size: 13px; }
+.days-overdue { color: #ef4444; font-weight: 700; font-size: 13px; }
+
+/* Live positions */
+.owner-chip {
+	background: #eef2ff;
+	color: #4338ca;
+	padding: 3px 10px;
+	border-radius: 12px;
+	font-size: 12px;
+	font-weight: 600;
+}
+.unassigned {
+	color: #ef4444;
+	font-style: italic;
+	font-size: 13px;
+}
+.priority-high { background: #fee2e2; color: #991b1b; padding: 2px 8px; border-radius: 8px; font-size: 12px; font-weight: 600; }
+.priority-medium { background: #fef3c7; color: #92400e; padding: 2px 8px; border-radius: 8px; font-size: 12px; font-weight: 600; }
+.priority-low { background: #f3f4f6; color: #4b5563; padding: 2px 8px; border-radius: 8px; font-size: 12px; font-weight: 600; }
+
+/* Publish preview */
+.publish-preview {
+	background: #f9fafb;
+	padding: 12px 16px;
+	border-radius: 8px;
+	margin-bottom: 16px;
+	border-left: 3px solid #4f46e5;
+}
+.publish-title {
+	font-weight: 700;
+	color: #111827;
+	margin-bottom: 4px;
+}
+.publish-meta {
+	color: #6b7280;
+	font-size: 13px;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+/* Priority picker */
+.priority-picker { display: flex; gap: 8px; }
+.priority-option {
+	display: flex; align-items: center; gap: 6px;
+	padding: 10px 16px; border: 2px solid #e5e7eb; border-radius: 8px;
+	cursor: pointer; font-size: 14px; font-weight: 500;
+	transition: all 0.15s;
+	flex: 1;
+	justify-content: center;
+}
+.priority-option input { display: none; }
+.priority-option.selected.priority-high { border-color: #ef4444; background: #fef2f2; color: #991b1b; }
+.priority-option.selected.priority-medium { border-color: #f59e0b; background: #fffbeb; color: #92400e; }
+.priority-option.selected.priority-low { border-color: #6b7280; background: #f9fafb; color: #4b5563; }
+.priority-option:hover { border-color: #a5b4fc; }
+
+.field-hint {
+	margin: 4px 0 0;
+	color: #9ca3af;
+	font-size: 12px;
+}
+
+.dialog-note {
+	margin: 12px 0 0;
+	padding: 10px 12px;
+	border-radius: 6px;
+	font-size: 12px;
+	line-height: 1.5;
+}
+.publish-note { background: #eff6ff; color: #1e40af; border-left: 3px solid #3b82f6; }
+.hold-note { background: #fffbeb; color: #92400e; border-left: 3px solid #f59e0b; }
+.close-note { background: #fef2f2; color: #991b1b; border-left: 3px solid #ef4444; }
+.reactivate-note { background: #f0fdf4; color: #166534; border-left: 3px solid #10b981; }
+
+/* Action menu */
+.action-menu-backdrop {
+	position: fixed;
+	inset: 0;
+	z-index: 150;
+}
+.action-menu {
+	position: absolute;
+	background: #fff;
+	border: 1px solid #e5e7eb;
+	border-radius: 8px;
+	box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+	min-width: 180px;
+	overflow: hidden;
+}
+.menu-item {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	width: 100%;
+	padding: 10px 14px;
+	border: none;
+	background: #fff;
+	text-align: left;
+	font-size: 13px;
+	font-weight: 500;
+	color: #374151;
+	cursor: pointer;
+}
+.menu-item:hover { background: #f9fafb; }
+.menu-item.menu-danger { color: #ef4444; }
+.menu-item.menu-danger:hover { background: #fef2f2; }
+.menu-icon { font-size: 14px; width: 20px; }
+
+/* Empty state */
+.empty-state {
+	background: #f9fafb;
+	border: 2px dashed #e5e7eb;
+	border-radius: 12px;
+	padding: 32px 20px;
+	text-align: center;
+	color: #9ca3af;
+	font-size: 14px;
+}
+.empty-state.large { padding: 60px 20px; }
+.empty-state h3 { margin: 12px 0 6px; font-size: 16px; color: #374151; }
+.empty-state p { margin: 0; font-size: 14px; }
+.empty-icon { font-size: 36px; margin-bottom: 8px; }
+
+/* Filters */
+.filters-row { display: flex; gap: 12px; margin-bottom: 12px; }
 .search-input { flex: 1; padding: 10px 14px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; outline: none; min-width: 0; }
 .search-input:focus { border-color: #4f46e5; box-shadow: 0 0 0 3px rgba(79,70,229,0.1); }
-.filter-select { padding: 10px 14px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; outline: none; background: #fff; min-width: 140px; }
+.filter-select { padding: 10px 14px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; outline: none; background: #fff; min-width: 160px; }
+
+/* Table */
 .table-wrapper { background: #fff; border-radius: 10px; border: 1px solid #e5e7eb; overflow-x: auto; }
+.table-wrapper.compact { margin-bottom: 8px; }
 .wf-table { width: 100%; border-collapse: collapse; min-width: 700px; }
 .wf-table th { text-align: left; padding: 12px 16px; font-size: 12px; font-weight: 600; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; white-space: nowrap; }
 .wf-table td { padding: 14px 16px; font-size: 14px; border-bottom: 1px solid #f3f4f6; }
 .clickable-row { cursor: pointer; }
 .clickable-row:hover { background: #f9fafb; }
 .job-title-cell { font-weight: 600; color: #111827; }
+.req-title-cell { font-weight: 600; color: #111827; }
 .center-text { text-align: center; color: #9ca3af; padding: 40px 16px !important; }
 .status-select { padding: 4px 8px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px; background: #fff; }
+
+/* Forms */
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .form-group { display: flex; flex-direction: column; gap: 6px; }
 .form-group.full { grid-column: 1 / -1; }
@@ -657,6 +1566,7 @@ export default {
 .form-input { padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; outline: none; width: 100%; box-sizing: border-box; }
 .form-input:focus { border-color: #4f46e5; box-shadow: 0 0 0 3px rgba(79,70,229,0.1); }
 .form-textarea { resize: vertical; font-family: inherit; }
+
 .skills-list { display: flex; flex-direction: column; gap: 8px; }
 .skill-row { display: flex; align-items: center; gap: 10px; }
 .skill-input { flex: 1; }
@@ -671,6 +1581,7 @@ export default {
 .round-detail-header { display: flex; justify-content: space-between; align-items: center; }
 .round-detail-info { font-size: 13px; color: #6b7280; margin-top: 4px; }
 
+/* Detail Panel */
 .detail-content { display: flex; flex-direction: column; gap: 16px; }
 .detail-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #f3f4f6; }
 .detail-label { font-size: 13px; font-weight: 600; color: #6b7280; }
@@ -680,6 +1591,26 @@ export default {
 .skill-tag { padding: 4px 12px; border-radius: 16px; font-size: 12px; font-weight: 500; background: #eef2ff; color: #4338ca; }
 .skill-tag.mandatory { background: #fef3c7; color: #92400e; }
 .mandatory-star { color: #ef4444; margin-left: 2px; }
+
+.detail-header-info { display: flex; justify-content: space-between; align-items: center; padding-bottom: 16px; border-bottom: 1px solid #f3f4f6; }
+.detail-id { font-family: monospace; font-size: 12px; color: #6b7280; }
+.detail-facts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.fact-label { font-size: 11px; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+.fact-value { font-size: 14px; color: #111827; font-weight: 500; }
+.section-title { font-size: 12px; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+.section-body { color: #374151; font-size: 14px; line-height: 1.6; }
+.highlight-section { background: #eff6ff; border-left: 3px solid #3b82f6; padding: 12px 16px; border-radius: 6px; }
+.highlight-section .section-title { color: #1e40af; }
+
+.timeline { position: relative; padding-left: 24px; }
+.timeline::before { content: ''; position: absolute; left: 8px; top: 6px; bottom: 6px; width: 2px; background: #e5e7eb; }
+.timeline-item { position: relative; padding-bottom: 16px; }
+.timeline-item:last-child { padding-bottom: 0; }
+.timeline-dot { position: absolute; left: -20px; top: 4px; width: 12px; height: 12px; border-radius: 50%; background: #4f46e5; border: 2px solid #fff; box-shadow: 0 0 0 2px #4f46e5; }
+.timeline-content { padding-left: 4px; }
+.timeline-event { font-weight: 600; font-size: 13px; color: #111827; }
+.timeline-meta { font-size: 12px; color: #6b7280; margin-top: 2px; }
+.timeline-comment { margin-top: 4px; font-size: 12px; color: #78350f; background: #fef3c7; padding: 6px 10px; border-radius: 4px; font-style: italic; }
 
 @media (max-width: 1024px) {
 	.kpi-row { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; }
@@ -692,5 +1623,9 @@ export default {
 	.form-grid { grid-template-columns: 1fr; }
 	.form-group.full { grid-column: 1; }
 	.skill-row { flex-wrap: wrap; }
+	.req-card-actions { flex-direction: column; }
+	.priority-picker { flex-direction: column; }
+	.sub-nav { width: 100%; overflow-x: auto; }
+	.detail-facts-grid { grid-template-columns: 1fr; }
 }
 </style>

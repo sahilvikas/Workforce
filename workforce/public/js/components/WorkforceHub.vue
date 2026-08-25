@@ -25,6 +25,7 @@
 		<div class="wf-tab-content">
 			<div class="wf-container">
 				<JobsTab v-if="activeTab === 'jobs'" />
+				<RequisitionsTab v-if="activeTab === 'requisitions'" />
 				<CandidatesTab v-if="activeTab === 'candidates'" />
 				<InterviewsTab v-if="activeTab === 'interviews'" />
 				<TalentSearchTab v-if="activeTab === 'talent'" />
@@ -35,19 +36,21 @@
 
 <script>
 import JobsTab from './JobsTab.vue';
+import RequisitionsTab from './RequisitionsTab.vue';
 import CandidatesTab from './CandidatesTab.vue';
 import InterviewsTab from './InterviewsTab.vue';
 import TalentSearchTab from './TalentSearchTab.vue';
 
 export default {
 	name: 'WorkforceHub',
-	components: { JobsTab, CandidatesTab, InterviewsTab, TalentSearchTab },
+	components: { JobsTab, RequisitionsTab, CandidatesTab, InterviewsTab, TalentSearchTab },
 
 	data() {
 		return {
 			activeTab: 'jobs',
 			tabs: [
 				{ key: 'jobs', label: 'Jobs', icon: '📋' },
+				{ key: 'requisitions', label: 'Requisitions', icon: '📝' },
 				{ key: 'candidates', label: 'Candidates', icon: '👥' },
 				{ key: 'interviews', label: 'Interviews', icon: '🗓️' },
 				{ key: 'talent', label: 'Talent Search', icon: '🔍' }
@@ -57,7 +60,7 @@ export default {
 
 	mounted() {
 		const hash = (window.location.hash || '').replace('#', '');
-		if (['jobs', 'candidates', 'interviews', 'talent'].includes(hash)) {
+		if (['jobs', 'requisitions', 'candidates', 'interviews', 'talent'].includes(hash)) {
 			this.activeTab = hash;
 		}
 		window.addEventListener('hashchange', this.onHashChange);
@@ -83,7 +86,7 @@ export default {
 
 		onHashChange() {
 			const hash = (window.location.hash || '').replace('#', '');
-			if (['jobs', 'candidates', 'interviews', 'talent'].includes(hash)) {
+			if (['jobs', 'requisitions', 'candidates', 'interviews', 'talent'].includes(hash)) {
 				this.activeTab = hash;
 			}
 		}

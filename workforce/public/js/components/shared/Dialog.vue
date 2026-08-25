@@ -9,10 +9,15 @@
 				<slot></slot>
 			</div>
 			<div class="dialog-footer">
-				<button class="btn-secondary" @click="close">Cancel</button>
-				<button class="btn-primary" @click="$emit('submit')" :disabled="loading">
-					{{ loading ? 'Saving...' : submitLabel }}
-				</button>
+				<div class="dialog-footer-left">
+					<slot name="footer-extra"></slot>
+				</div>
+				<div class="dialog-footer-right">
+					<button class="btn-secondary" @click="close">Cancel</button>
+					<button class="btn-primary" @click="$emit('submit')" :disabled="loading">
+						{{ loading ? 'Saving...' : submitLabel }}
+					</button>
+				</div>
 			</div>
 		</div>
 	</div>
@@ -35,6 +40,9 @@ export default {
 		visible(val) {
 			document.body.style.overflow = val ? 'hidden' : '';
 		}
+	},
+	beforeUnmount() {
+		document.body.style.overflow = '';
 	}
 };
 </script>
@@ -42,7 +50,10 @@ export default {
 <style scoped>
 .wf-dialog-overlay {
 	position: fixed;
-	top: 0; left: 0; right: 0; bottom: 0;
+	top: 60px;
+	left: 0;
+	right: 0;
+	bottom: 0;
 	background: rgba(0, 0, 0, 0.4);
 	z-index: 200;
 	display: flex;
@@ -55,7 +66,7 @@ export default {
 	box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
 	display: flex;
 	flex-direction: column;
-	max-height: 85vh;
+	max-height: calc(85vh - 60px);
 	animation: fadeUp 0.2s ease;
 }
 @keyframes fadeUp {
@@ -82,8 +93,21 @@ export default {
 	padding: 16px 24px;
 	border-top: 1px solid #e5e7eb;
 	display: flex;
-	justify-content: flex-end;
+	justify-content: space-between;
+	align-items: center;
 	gap: 10px;
+}
+.dialog-footer-left {
+	display: flex;
+	gap: 10px;
+}
+.dialog-footer-left:empty {
+	display: none;
+}
+.dialog-footer-right {
+	display: flex;
+	gap: 10px;
+	margin-left: auto;
 }
 .btn-primary {
 	background: #4f46e5; color: #fff; border: none;
@@ -99,4 +123,12 @@ export default {
 	font-weight: 500; cursor: pointer; font-size: 14px;
 }
 .btn-secondary:hover { background: #f9fafb; }
+
+@media (max-width: 768px) {
+	.dialog-sm, .dialog-md, .dialog-lg { width: 95vw; }
+	.dialog-header { padding: 16px; }
+	.dialog-body { padding: 16px; }
+	.dialog-footer { padding: 12px 16px; flex-direction: column; align-items: stretch; }
+	.dialog-footer-right { justify-content: flex-end; }
+}
 </style>

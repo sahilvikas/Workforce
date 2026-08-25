@@ -1,32 +1,29 @@
 <template>
-	<div v-if="visible" class="wf-dialog-overlay" @click.self="close">
-		<div class="wf-dialog" :class="'dialog-' + size">
-			<div class="dialog-header">
-				<h3>{{ title }}</h3>
-				<button class="dialog-close" @click="close">&times;</button>
-			</div>
-			<div class="dialog-body">
-				<slot></slot>
-			</div>
-			<div class="dialog-footer">
-				<button class="btn-secondary" @click="close">Cancel</button>
-				<button class="btn-primary" @click="$emit('submit')" :disabled="loading">
-					{{ loading ? 'Saving...' : submitLabel }}
-				</button>
+	<transition name="panel-slide">
+		<div v-if="visible" class="wf-panel-overlay" @click.self="close">
+			<div class="wf-panel" :class="'panel-' + size">
+				<div class="panel-header">
+					<h3>{{ title }}</h3>
+					<button class="panel-close" @click="close">&times;</button>
+				</div>
+				<div class="panel-body">
+					<slot></slot>
+				</div>
+				<div class="panel-actions" v-if="$slots.actions">
+					<slot name="actions"></slot>
+				</div>
 			</div>
 		</div>
-	</div>
+	</transition>
 </template>
 
 <script>
 export default {
-	name: 'Dialog',
+	name: 'DetailPanel',
 	props: {
 		visible: { type: Boolean, default: false },
 		title: { type: String, default: '' },
-		submitLabel: { type: String, default: 'Save' },
-		loading: { type: Boolean, default: false },
-		size: { type: String, default: 'md' }
+		size: { type: String, default: 'md' }  // sm | md | lg
 	},
 	methods: {
 		close() { this.$emit('close'); }
@@ -35,78 +32,107 @@ export default {
 		visible(val) {
 			document.body.style.overflow = val ? 'hidden' : '';
 		}
+	},
+	beforeUnmount() {
+		document.body.style.overflow = '';
 	}
 };
 </script>
 
 <style scoped>
-.wf-dialog-overlay {
+.wf-panel-overlay {
 	position: fixed;
 	top: 60px;
 	left: 0;
 	right: 0;
 	bottom: 0;
-	background: rgba(0, 0, 0, 0.4);
-	z-index: 200;
+	background: rgba(0, 0, 0, 0.3);
+	z-index: 190;
 	display: flex;
-	align-items: center;
-	justify-content: center;
+	justify-content: flex-end;
 }
-.wf-dialog {
+
+.wf-panel {
 	background: #fff;
-	border-radius: 12px;
-	box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+	height: 100%;
+	box-shadow: -8px 0 40px rgba(0, 0, 0, 0.12);
 	display: flex;
 	flex-direction: column;
-	max-height: calc(85vh - 60px);
-	animation: fadeUp 0.2s ease;
+	overflow: hidden;
 }
-@keyframes fadeUp {
-	from { opacity: 0; transform: translateY(20px); }
-	to { opacity: 1; transform: translateY(0); }
-}
-.dialog-sm { width: 420px; }
-.dialog-md { width: 560px; }
-.dialog-lg { width: 720px; }
-.dialog-header {
+
+.panel-sm { width: 380px; }
+.panel-md { width: 520px; }
+.panel-lg { width: 680px; }
+
+.panel-header {
 	display: flex;
 	justify-content: space-between;
 	align-items: center;
 	padding: 20px 24px;
 	border-bottom: 1px solid #e5e7eb;
+	background: #f9fafb;
+	flex-shrink: 0;
 }
-.dialog-header h3 { margin: 0; font-size: 18px; font-weight: 600; }
-.dialog-close {
-	background: none; border: none;
-	font-size: 22px; color: #6b7280; cursor: pointer;
+.panel-header h3 {
+	margin: 0;
+	font-size: 17px;
+	font-weight: 600;
+	color: #111827;
+	line-height: 1.3;
+	word-break: break-word;
+	padding-right: 12px;
 }
-.dialog-body { padding: 24px; overflow-y: auto; flex: 1; }
-.dialog-footer {
+.panel-close {
+	background: none;
+	border: none;
+	font-size: 24px;
+	color: #6b7280;
+	cursor: pointer;
+	padding: 0;
+	line-height: 1;
+	flex-shrink: 0;
+}
+.panel-close:hover { color: #111827; }
+
+.panel-body {
+	padding: 20px 24px;
+	overflow-y: auto;
+	flex: 1;
+}
+
+.panel-actions {
 	padding: 16px 24px;
 	border-top: 1px solid #e5e7eb;
+	background: #fff;
 	display: flex;
 	justify-content: flex-end;
 	gap: 10px;
+	flex-shrink: 0;
 }
-.btn-primary {
-	background: #4f46e5; color: #fff; border: none;
-	padding: 10px 24px; border-radius: 8px;
-	font-weight: 600; cursor: pointer; font-size: 14px;
+
+/* Slide-in animation */
+.panel-slide-enter-active,
+.panel-slide-leave-active {
+	transition: opacity 0.2s ease;
 }
-.btn-primary:hover { background: #4338ca; }
-.btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
-.btn-secondary {
-	background: #fff; color: #374151;
-	border: 1px solid #d1d5db;
-	padding: 10px 24px; border-radius: 8px;
-	font-weight: 500; cursor: pointer; font-size: 14px;
+.panel-slide-enter-active .wf-panel,
+.panel-slide-leave-active .wf-panel {
+	transition: transform 0.25s ease;
 }
-.btn-secondary:hover { background: #f9fafb; }
+.panel-slide-enter-from,
+.panel-slide-leave-to {
+	opacity: 0;
+}
+.panel-slide-enter-from .wf-panel,
+.panel-slide-leave-to .wf-panel {
+	transform: translateX(100%);
+}
 
 @media (max-width: 768px) {
-	.dialog-sm, .dialog-md, .dialog-lg { width: 95vw; }
-	.dialog-header { padding: 16px; }
-	.dialog-body { padding: 16px; }
-	.dialog-footer { padding: 12px 16px; }
+	.panel-sm, .panel-md, .panel-lg { width: 100vw; }
+	.panel-header { padding: 16px; }
+	.panel-body { padding: 16px; }
+	.panel-actions { padding: 12px 16px; }
 }
 </style>

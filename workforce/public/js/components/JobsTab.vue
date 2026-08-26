@@ -181,7 +181,7 @@
 			</div>
 		</div>
 
-		<!-- ==================== JOB OPENINGS VIEW (unchanged) ==================== -->
+		<!-- ==================== JOB OPENINGS VIEW ==================== -->
 		<div v-if="subView === 'jobs'">
 			<div class="tab-header">
 				<h2>Job Openings</h2>
@@ -243,7 +243,7 @@
 			</div>
 		</div>
 
-		<!-- ==================== INTERVIEW TEMPLATES VIEW (unchanged) ==================== -->
+		<!-- ==================== INTERVIEW TEMPLATES VIEW ==================== -->
 		<div v-if="subView === 'templates'">
 			<div class="tab-header">
 				<h2>Interview Templates</h2>
@@ -330,7 +330,7 @@
 			</div>
 		</Dialog>
 
-		<!-- ==================== POSITION ACTION DIALOG (Hold / Close / Reactivate / Reassign) ==================== -->
+		<!-- ==================== POSITION ACTION DIALOG ==================== -->
 		<Dialog :visible="showActionDialog" :title="actionDialogTitle" :submitLabel="actionSubmitLabel"
 			:loading="actioning" size="md" @close="showActionDialog = false" @submit="submitPositionAction">
 			<div v-if="actionPosition" class="publish-preview">
@@ -338,14 +338,12 @@
 				<div class="publish-meta">Current status: <Badge :label="actionPosition.status" /></div>
 			</div>
 
-			<!-- Reason field (for hold/close) -->
 			<div v-if="actionType === 'hold' || actionType === 'close'" class="form-group full">
 				<label>Reason *</label>
 				<textarea v-model="actionForm.reason" class="form-input form-textarea" rows="3"
 					:placeholder="actionType === 'hold' ? 'e.g. Budget review pending, waiting on client confirmation...' : 'e.g. Position filled internally, requirements changed...'"></textarea>
 			</div>
 
-			<!-- New owner field (for reassign) -->
 			<div v-if="actionType === 'reassign'" class="form-group full">
 				<label>New HR Owner *</label>
 				<select v-model="actionForm.new_owner" class="form-input">
@@ -366,7 +364,6 @@
 				</p>
 			</div>
 
-			<!-- Reactivate has no fields -->
 			<div v-if="actionType === 'reactivate'" class="dialog-note reactivate-note">
 				This position will be Open again and start accepting new applications.
 				Existing candidates in the pipeline are already active.
@@ -381,7 +378,7 @@
 			</div>
 		</Dialog>
 
-		<!-- ==================== ACTION MENU (contextual) ==================== -->
+		<!-- ==================== ACTION MENU ==================== -->
 		<div v-if="actionMenuVisible" class="action-menu-backdrop" @click="actionMenuVisible = false">
 			<div class="action-menu" :style="actionMenuStyle" @click.stop>
 				<button v-if="actionMenuPos.status === 'Open'" class="menu-item" @click="startAction('hold')">
@@ -399,7 +396,7 @@
 			</div>
 		</div>
 
-		<!-- ==================== EXISTING JOB CREATE/EDIT DIALOG (unchanged) ==================== -->
+		<!-- ==================== JOB CREATE/EDIT DIALOG ==================== -->
 		<Dialog :visible="showDialog" :title="editingJob ? 'Edit Job Opening' : 'New Job Opening'" :submitLabel="editingJob ? 'Update' : 'Create'" :loading="saving" size="lg" @close="closeDialog" @submit="saveJob">
 			<div class="form-grid">
 				<div class="form-group full">
@@ -465,7 +462,7 @@
 			</div>
 		</Dialog>
 
-		<!-- ==================== EXISTING TEMPLATE CREATE/EDIT DIALOG (unchanged) ==================== -->
+		<!-- ==================== TEMPLATE CREATE/EDIT DIALOG ==================== -->
 		<Dialog :visible="showTemplateDialog" :title="editingTemplate ? 'Edit Interview Template' : 'New Interview Template'" :submitLabel="editingTemplate ? 'Update' : 'Create'" :loading="saving" size="lg" @close="showTemplateDialog = false" @submit="saveTemplate">
 			<div class="form-grid">
 				<div class="form-group full">
@@ -559,7 +556,7 @@
 			</template>
 		</DetailPanel>
 
-		<!-- ==================== EXISTING JOB DETAIL PANEL (unchanged) ==================== -->
+		<!-- ==================== JOB DETAIL PANEL ==================== -->
 		<DetailPanel :visible="showPanel" :title="selectedJob ? selectedJob.job_title : ''" @close="showPanel = false">
 			<div v-if="selectedJob" class="detail-content">
 				<div class="detail-row"><span class="detail-label">Status</span><Badge :label="selectedJob.status" /></div>
@@ -596,7 +593,7 @@
 			</template>
 		</DetailPanel>
 
-		<!-- ==================== EXISTING TEMPLATE DETAIL PANEL (unchanged) ==================== -->
+		<!-- ==================== TEMPLATE DETAIL PANEL ==================== -->
 		<DetailPanel :visible="showTemplatePanel" :title="selectedTemplate ? (selectedTemplate.template_name || selectedTemplate.name) : ''" @close="showTemplatePanel = false">
 			<div v-if="selectedTemplate" class="detail-content">
 				<div class="detail-row"><span class="detail-label">Template ID</span><span>{{ selectedTemplate.name }}</span></div>
@@ -635,7 +632,7 @@ export default {
 
 	data() {
 		return {
-			subView: 'dashboard',  // dashboard is new default
+			subView: 'dashboard',
 			// Dashboard data
 			requisitions: [],
 			positions: [],
@@ -650,11 +647,11 @@ export default {
 			reqDetailData: null,
 			hrManagers: [],
 			recruitmentCoordinators: [],
-			userNameMap: {},  // email → full_name
+			userNameMap: {},
 
 			// Position actions
 			showActionDialog: false,
-			actionType: '',   // hold / close / reactivate / reassign
+			actionType: '',
 			actionPosition: null,
 			actionForm: { reason: '', new_owner: '' },
 			actioning: false,
@@ -662,7 +659,7 @@ export default {
 			actionMenuPos: {},
 			actionMenuStyle: {},
 
-			// Existing Jobs data
+			// Jobs data
 			jobs: [],
 			loading: false,
 			saving: false,
@@ -674,7 +671,7 @@ export default {
 			selectedJob: null,
 			form: this.emptyForm(),
 
-			// Existing Templates data
+			// Templates data
 			templates: [],
 			templatesLoading: false,
 			showTemplateDialog: false,
@@ -760,7 +757,6 @@ export default {
 		this.loadDepartments();
 		this.loadDesignations();
 		this.loadInterviewers();
-		this.loadHROwners();
 	},
 
 	methods: {
@@ -811,6 +807,9 @@ export default {
 				// Load Job Openings (for Live Positions section)
 				this.positions = await this.api('wf_get_job_openings');
 
+				// Load HR owners first so names are available for enrichment
+				await this.loadHROwners();
+
 				// Enrich positions with hr_owner names + applicant counts
 				await this.enrichPositions();
 			} catch (e) {
@@ -819,25 +818,17 @@ export default {
 		},
 
 		async enrichPositions() {
-			// Map emails → names for assigned_hr display
-			const emails = [...new Set(this.positions.map(p => p.assigned_hr).filter(Boolean))];
-			for (const email of emails) {
-				if (!this.userNameMap[email]) {
-					try {
-						const fullName = await this.api('frappe.client.get_value', {
-							doctype: 'User',
-							filters: { name: email },
-							fieldname: 'full_name'
-						});
-						this.userNameMap[email] = (fullName && fullName.full_name) || email.split('@')[0];
-					} catch (e) {
-						this.userNameMap[email] = email.split('@')[0];
-					}
+			// Build name map from already-loaded HR owners (no direct User/Has Role queries)
+			const allKnownUsers = [...this.recruitmentCoordinators, ...this.hrManagers];
+			allKnownUsers.forEach(u => {
+				if (u.name && u.full_name) {
+					this.userNameMap[u.name] = u.full_name;
 				}
-			}
+			});
+
 			this.positions = this.positions.map(p => ({
 				...p,
-				assigned_hr_name: p.assigned_hr ? this.userNameMap[p.assigned_hr] : ''
+				assigned_hr_name: p.assigned_hr ? (this.userNameMap[p.assigned_hr] || p.assigned_hr.split('@')[0]) : ''
 			}));
 
 			// Load applicant counts
@@ -858,46 +849,19 @@ export default {
 
 		async loadHROwners() {
 			try {
-				// Get all users with WF Recruitment Coordinator role
-				const rcRoles = await this.api('frappe.client.get_list', {
-					doctype: 'Has Role',
-					filters: { role: 'WF Recruitment Coordinator', parenttype: 'User' },
-					fields: ['parent'],
-					limit_page_length: 0
-				});
-				const rcEmails = rcRoles.map(r => r.parent);
+				const res = await this.api('wf_get_hr_owners');
+				this.recruitmentCoordinators = (res.recruitment_coordinators || []).map(u => ({
+					name: u.email,
+					full_name: u.full_name
+				}));
+				this.hrManagers = (res.hr_managers || []).map(u => ({
+					name: u.email,
+					full_name: u.full_name
+				}));
+			} catch (e) {
 				this.recruitmentCoordinators = [];
-				for (const email of rcEmails) {
-					try {
-						const u = await this.api('frappe.client.get_value', {
-							doctype: 'User',
-							filters: { name: email },
-							fieldname: ['full_name']
-						});
-						this.recruitmentCoordinators.push({ name: email, full_name: (u && u.full_name) || email });
-					} catch (e) {}
-				}
-
-				// HR Managers (for caretaker option)
-				const hrmRoles = await this.api('frappe.client.get_list', {
-					doctype: 'Has Role',
-					filters: { role: 'WF HR Manager', parenttype: 'User' },
-					fields: ['parent'],
-					limit_page_length: 0
-				});
-				const hrmEmails = hrmRoles.map(r => r.parent);
 				this.hrManagers = [];
-				for (const email of hrmEmails) {
-					try {
-						const u = await this.api('frappe.client.get_value', {
-							doctype: 'User',
-							filters: { name: email },
-							fieldname: ['full_name']
-						});
-						this.hrManagers.push({ name: email, full_name: (u && u.full_name) || email });
-					} catch (e) {}
-				}
-			} catch (e) {}
+			}
 		},
 
 		daysClass(r) {
@@ -965,7 +929,6 @@ export default {
 
 		openPositionActionMenu(pos, event) {
 			this.actionMenuPos = pos;
-			// Position menu near the click
 			const rect = event.target.getBoundingClientRect();
 			this.actionMenuStyle = {
 				top: (rect.bottom + window.scrollY + 4) + 'px',
@@ -1014,12 +977,11 @@ export default {
 		},
 
 		openPositionDetail(pos) {
-			// Reuse existing job detail panel
 			this.selectedJob = pos;
 			this.showPanel = true;
 		},
 
-		// ───── JOBS (unchanged from original) ─────
+		// ───── JOBS ─────
 
 		async loadJobs() {
 			this.loading = true;
@@ -1166,7 +1128,7 @@ export default {
 			this.showPanel = true;
 		},
 
-		// ───── TEMPLATES (unchanged from original) ─────
+		// ───── TEMPLATES ─────
 
 		async loadTemplates() {
 			this.templatesLoading = true;

@@ -34,7 +34,6 @@
 		</div>
 	</div>
 </template>
-
 <script>
 import JobsTab from './JobsTab.vue';
 import RequisitionsTab from './RequisitionsTab.vue';
@@ -51,13 +50,18 @@ export default {
 		return {
 			activeTab: 'jobs',
 			userRoles: [],
+			// Tab visibility by role. 'System Manager' is added everywhere as an admin fallback.
+			// HR Manager  = WF HR Manager (Asha)         — full recruitment workspace
+			// Leadership  = WF Leadership (Priyesh)      — approvals + oversight of Jobs/Requisitions
+			// Hiring Mgr  = WF Hiring Manager (Sahil)    — raises + tracks his requisitions only
+			// Recruiter   = WF Recruitment Coordinator   — works the pipeline: Jobs, Candidates, Interviews, Talent
 			allTabs: [
-				{ key: 'jobs', label: 'Jobs', icon: '📋', roles: ['*'] },
-				{ key: 'requisitions', label: 'Requisitions', icon: '📝', roles: ['*'] },
-				{ key: 'approvals', label: 'Approvals', icon: '✅', roles: ['WF Leadership', 'System Manager'] },
-				{ key: 'candidates', label: 'Candidates', icon: '👥', roles: ['*'] },
-				{ key: 'interviews', label: 'Interviews', icon: '🗓️', roles: ['*'] },
-				{ key: 'talent', label: 'Talent Search', icon: '🔍', roles: ['*'] }
+				{ key: 'jobs',         label: 'Jobs',          icon: '📋', roles: ['System Manager', 'WF HR Manager', 'WF Leadership', 'WF Recruitment Coordinator'] },
+				{ key: 'requisitions', label: 'Requisitions',  icon: '📝', roles: ['System Manager', 'WF HR Manager', 'WF Leadership', 'WF Hiring Manager'] },
+				{ key: 'approvals',    label: 'Approvals',     icon: '✅', roles: ['System Manager', 'WF Leadership'] },
+				{ key: 'candidates',   label: 'Candidates',    icon: '👥', roles: ['System Manager', 'WF HR Manager', 'WF Recruitment Coordinator'] },
+				{ key: 'interviews',   label: 'Interviews',    icon: '🗓️', roles: ['System Manager', 'WF HR Manager', 'WF Recruitment Coordinator'] },
+				{ key: 'talent',       label: 'Talent Search', icon: '🔍', roles: ['System Manager', 'WF HR Manager', 'WF Recruitment Coordinator'] }
 			]
 		};
 	},
@@ -114,7 +118,6 @@ export default {
 	}
 };
 </script>
-
 <style scoped>
 /* Override Frappe's container width only for Workforce Hub */
 .workforce-hub :deep(.container-xl),

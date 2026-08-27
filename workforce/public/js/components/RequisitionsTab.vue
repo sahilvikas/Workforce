@@ -139,7 +139,6 @@
 						<option value="">— Select reason —</option>
 						<option value="New position">New position</option>
 						<option value="Replacement">Replacement</option>
-						<option value="Expansion">Expansion</option>
 					</select>
 				</div>
 
@@ -163,15 +162,6 @@
 					<label>Required Skills</label>
 					<input v-model="form.required_skills" type="text" class="form-input"
 						placeholder="Comma-separated e.g. Python, SQL, React" />
-				</div>
-
-				<div class="form-group full">
-					<label>
-						Business Justification *
-						<span class="hint">({{ justificationCharCount }}/30 min characters)</span>
-					</label>
-					<textarea v-model="form.business_justification" class="form-input form-textarea" rows="3"
-						placeholder="Why is this hire needed? This is shown to leadership for approval."></textarea>
 				</div>
 			</div>
 
@@ -215,12 +205,6 @@
 				<div v-if="detailData.requisition.required_skills" class="detail-section">
 					<span class="detail-label">Required Skills</span>
 					<div class="detail-desc">{{ detailData.requisition.required_skills }}</div>
-				</div>
-
-				<!-- Business Justification -->
-				<div class="detail-section justification-section">
-					<span class="detail-label">Business Justification</span>
-					<div class="detail-desc justification-text">{{ detailData.requisition.business_justification }}</div>
 				</div>
 
 				<!-- Leadership Comment (if any) -->
@@ -370,10 +354,6 @@ export default {
 			return 'Save & Submit';
 		},
 
-		justificationCharCount() {
-			return (this.form.business_justification || '').length;
-		},
-
 		filteredRequisitions() {
 			const q = this.searchQuery.toLowerCase();
 			return this.requisitions.filter(r => {
@@ -405,8 +385,7 @@ export default {
 				compensation_range: '',
 				target_start_date: '',
 				description: '',
-				required_skills: '',
-				business_justification: ''
+				required_skills: ''
 			};
 		},
 
@@ -480,8 +459,7 @@ export default {
 				compensation_range: req.compensation_range || '',
 				target_start_date: req.target_start_date || '',
 				description: req.description || '',
-				required_skills: req.required_skills || '',
-				business_justification: req.business_justification || ''
+				required_skills: req.required_skills || ''
 			};
 			this.showPanel = false;
 			this.showDialog = true;
@@ -508,12 +486,6 @@ export default {
 				this.showToast('Number of openings must be at least 1', 'error'); return false;
 			}
 			if (!this.form.description.trim()) { this.showToast('Job description is required', 'error'); return false; }
-			if (!this.form.business_justification.trim()) {
-				this.showToast('Business justification is required', 'error'); return false;
-			}
-			if (this.form.business_justification.trim().length < 30) {
-				this.showToast('Business justification must be at least 30 characters', 'error'); return false;
-			}
 			return true;
 		},
 
@@ -681,8 +653,6 @@ export default {
 .detail-label { font-size: 13px; font-weight: 600; color: #6b7280; }
 .detail-section { padding: 12px 0; }
 .detail-desc { margin-top: 8px; font-size: 14px; color: #374151; line-height: 1.6; }
-.justification-section { background: #f9fafb; padding: 12px; border-radius: 8px; border-left: 3px solid #4f46e5; }
-.justification-text { color: #111827; }
 
 .leadership-comment { background: #fffbeb; padding: 12px; border-radius: 8px; border-left: 3px solid #f59e0b; }
 .leadership-comment .detail-label { display: flex; gap: 8px; align-items: center; }

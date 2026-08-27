@@ -52,8 +52,8 @@
 
 					<div class="req-card-body">
 						<div class="body-section">
-							<div class="body-label">Business Justification</div>
-							<div class="body-text">{{ r.business_justification || 'Not provided' }}</div>
+							<div class="body-label">Description</div>
+							<div class="body-text">{{ shortDesc(r.description) }}</div>
 						</div>
 					</div>
 
@@ -156,14 +156,8 @@
 					</div>
 				</div>
 
-				<!-- Business justification -->
-				<div class="detail-section highlight-section">
-					<div class="section-title">Business Justification</div>
-					<div class="section-body justification-text">{{ detailData.requisition.business_justification }}</div>
-				</div>
-
 				<!-- Description -->
-				<div class="detail-section">
+				<div class="detail-section highlight-section">
 					<div class="section-title">Job Description</div>
 					<div class="section-body" v-html="detailData.requisition.description"></div>
 				</div>
@@ -334,6 +328,12 @@ export default {
 			if (r.days_pending > 7) return 'days-overdue';
 			if (r.days_pending > 4) return 'days-warning';
 			return 'days-normal';
+		},
+
+		shortDesc(text) {
+			const t = (text || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+			if (!t) return 'Not provided';
+			return t.length > 500 ? t.slice(0, 500) + ' …' : t;
 		},
 
 		async openDetail(req) {
@@ -675,7 +675,6 @@ export default {
 	border-radius: 6px;
 }
 .highlight-section .section-title { color: #1e40af; }
-.justification-text { color: #111827; }
 
 .revision-history {
 	background: #fffbeb;

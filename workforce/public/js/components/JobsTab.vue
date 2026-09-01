@@ -209,7 +209,7 @@
 		<div v-else>
 			<!-- Sub Navigation -->
 			<div class="sub-nav">
-				<button :class="{ active: subView === 'dashboard' }" @click="switchSubView('dashboard')">Hiring Dashboard</button>
+				<button v-if="!isCoordinator" :class="{ active: subView === 'dashboard' }" @click="switchSubView('dashboard')">Hiring Dashboard</button>
 				<button :class="{ active: subView === 'jobs' }" @click="switchSubView('jobs')">Job Openings</button>
 				<button :class="{ active: subView === 'templates' }" @click="switchSubView('templates')">Interview Templates</button>
 			</div>
@@ -293,6 +293,7 @@
 						<input v-model="dashboardSearch" type="text" placeholder="Search live positions..." class="search-input" />
 						<select v-model="dashboardStatusFilter" class="filter-select">
 							<option value="">Open + On Hold</option>
+							<option value="all">All positions</option>
 							<option value="Open">Open only</option>
 							<option value="On Hold">On Hold only</option>
 							<option value="Closed">Closed</option>
@@ -340,7 +341,7 @@
 			<div v-if="subView === 'jobs'">
 				<div class="tab-header">
 					<h2>Job Openings</h2>
-					<button class="btn-primary" @click="openCreateDialog">+ New Job Opening</button>
+					<button v-if="isHR" class="btn-primary" @click="openCreateDialog">+ New Job Opening</button>
 				</div>
 				<div class="kpi-row">
 					<KpiCard label="Total Jobs" :value="jobs.length" />
@@ -374,11 +375,12 @@
 								<td>{{ formatDate(job.closing_date) }}</td>
 								<td><Badge :label="job.status" /></td>
 								<td @click.stop>
-									<select :value="job.status" @change="changeStatus(job, $event.target.value)" class="status-select">
+									<select v-if="isHR" :value="job.status" @change="changeStatus(job, $event.target.value)" class="status-select">
 										<option value="Open">Open</option>
 										<option value="On Hold">On Hold</option>
 										<option value="Closed">Closed</option>
 									</select>
+									<span v-else class="status-hint">Open to manage</span>
 								</td>
 							</tr>
 						</tbody>
@@ -390,7 +392,7 @@
 			<div v-if="subView === 'templates'">
 				<div class="tab-header">
 					<h2>Interview Templates</h2>
-					<button class="btn-primary" @click="openTemplateDialog()">+ New Template</button>
+					<button v-if="isHR" class="btn-primary" @click="openTemplateDialog()">+ New Template</button>
 				</div>
 				<div class="table-wrapper">
 					<table class="wf-table">
@@ -403,8 +405,9 @@
 								<td>{{ (t.rounds || []).length }} rounds</td>
 								<td>{{ t.job_count || 0 }} jobs</td>
 								<td @click.stop>
-									<button class="btn-link" @click="openTemplateDialog(t)">Edit</button>
-									<button class="btn-link btn-link-danger" @click="deleteTemplate(t)">Delete</button>
+									<button v-if="isHR" class="btn-link" @click="openTemplateDialog(t)">Edit</button>
+									<button v-if="isHR" class="btn-link btn-link-danger" @click="deleteTemplate(t)">Delete</button>
+									<span v-if="!isHR" class="status-hint">View only</span>
 								</td>
 							</tr>
 						</tbody>
@@ -571,8 +574,8 @@
 				</div>
 			</div>
 			<template #actions>
-				<button class="btn-primary" @click="openEditDialog(selectedJob)">Edit</button>
-				<button class="btn-danger" @click="deleteJob(selectedJob)">Delete</button>
+				<button v-if="isHR" class="btn-primary" @click="openEditDialog(selectedJob)">Edit</button>
+				<button v-if="isHR" class="btn-danger" @click="deleteJob(selectedJob)">Delete</button>
 			</template>
 		</DetailPanel>
 
@@ -590,8 +593,8 @@
 				</div>
 			</div>
 			<template #actions>
-				<button class="btn-primary" @click="openTemplateDialog(selectedTemplate)">Edit</button>
-				<button class="btn-danger" @click="deleteTemplate(selectedTemplate)">Delete</button>
+				<button v-if="isHR" class="btn-primary" @click="openTemplateDialog(selectedTemplate)">Edit</button>
+				<button v-if="isHR" class="btn-danger" @click="deleteTemplate(selectedTemplate)">Delete</button>
 			</template>
 		</DetailPanel>
 	</div>
@@ -682,7 +685,8 @@ export default {
 		closedPositions() { return this.positions.filter(p => p.status === 'Closed'); },
 		filteredLivePositions() {
 			let list = this.positions;
-			if (this.dashboardStatusFilter) list = list.filter(p => p.status === this.dashboardStatusFilter);
+			if (this.dashboardStatusFilter === 'all') { /* show every status */ }
+			else if (this.dashboardStatusFilter) list = list.filter(p => p.status === this.dashboardStatusFilter);
 			else list = list.filter(p => p.status === 'Open' || p.status === 'On Hold');
 			if (this.dashboardSearch) {
 				const q = this.dashboardSearch.toLowerCase();
@@ -710,8 +714,15 @@ export default {
 			const l = { hold: 'Put on Hold', close: 'Close Position', reactivate: 'Reactivate', reassign: 'Reassign' };
 			return l[this.actionType] || 'Confirm';
 		},
-		canManagePosition() {
+		isHR() {
 			return this.userRoles.includes('WF HR Manager') || this.userRoles.includes('System Manager');
+		},
+		isCoordinator() {
+			return this.userRoles.includes('WF Recruitment Coordinator') && !this.isHR;
+		},
+		canManagePosition() {
+			// HR manages any position; coordinators manage their OWN (server enforces own-only)
+			return this.isHR || this.isCoordinator;
 		},
 		resumeFileName() {
 			const url = this.candidateData && this.candidateData.candidate.resume_url;
@@ -723,6 +734,8 @@ export default {
 
 	mounted() {
 		this.userRoles = (window.frappe && frappe.user_roles) || [];
+		// Coordinators have no Hiring Dashboard — land them on Job Openings
+		if (this.isCoordinator) this.subView = 'jobs';
 		this.loadDashboardData();
 		this.loadJobs();
 		this.loadTemplates();
@@ -914,8 +927,14 @@ export default {
 
 		// ───── JOBS ─────
 		async loadJobs() { this.loading = true; try { this.jobs = await this.api('wf_get_job_openings'); } catch (e) { this.showToast('Failed to load jobs', 'error'); } this.loading = false; },
-		async loadDepartments() { const r = await this.apiQuiet('frappe.client.get_list', { doctype: 'Department', fields: ['name'], limit_page_length: 0, order_by: 'name asc' }); this.departments = r || []; },
-		async loadDesignations() { const r = await this.apiQuiet('frappe.client.get_list', { doctype: 'Designation', fields: ['name'], limit_page_length: 0, order_by: 'name asc' }); this.designations = r || []; },
+		async loadDepartments() {
+			const r = await this.apiQuiet('wf_get_departments');
+			this.departments = (r || []).map(d => ({ name: d.name || d }));
+		},
+		async loadDesignations() {
+			const r = await this.apiQuiet('wf_get_designations');
+			this.designations = (r || []).map(n => ({ name: n }));
+		},
 		async loadInterviewers() { const r = await this.apiQuiet('frappe.client.get_list', { doctype: 'User', fields: ['name', 'full_name'], filters: { enabled: 1, user_type: 'System User' }, limit_page_length: 0, order_by: 'full_name asc' }); this.interviewers = r || []; },
 
 		openCreateDialog() { this.editingJob = null; this.form = this.emptyForm(); this.showDialog = true; },
@@ -980,6 +999,8 @@ export default {
 .sub-nav button { padding: 10px 20px; border: none; background: #fff; font-size: 14px; font-weight: 500; color: #6b7280; cursor: pointer; }
 .sub-nav button.active { background: #4f46e5; color: #fff; }
 .sub-nav button:not(:last-child) { border-right: 1px solid #e5e7eb; }
+
+.status-hint { color: #9ca3af; font-size: 12px; font-style: italic; }
 
 .tab-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
 .tab-header h2 { margin: 0; font-size: 20px; font-weight: 600; }

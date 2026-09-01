@@ -447,3 +447,124 @@ All backend pending (WF Prospect + 3 APIs) ❌
 | WF Applicant Auto Score | Server Script (After Insert) | Disabled | Aug 24, 2026 | Duplicate scorer; wrote invalid screening_status values (Pass/Review/Fail) |
 | WF Applicant after save notifications | Server Script | Already disabled | — | Reads nonexistent `previous_status` field |
 | screened_by = "Auto Scorer" on 12 WF Applicant records | Data | Cleared to None (db.set_value + commit) | Aug 23, 2026 | Invalid User link — blocked feedback submission (LinkValidationError on applicant cascade save) |
+
+
+# REGISTRY.md — Sep 1, 2026 update block
+#
+# HOW TO MERGE:
+# 1. Change the top line to: **Last updated: Sep 1, 2026** (previous snapshot: Aug 28, 2026)
+# 2. Paste the "Sep 1, 2026" section below right under the header.
+# 3. Apply the small table edits noted at the very bottom.
+
+---
+
+## Sep 1, 2026 — Production Permissions Hardening & Coordinator Scoping
+
+All of the below is **live on PROD (erp.cozycornerpatios.com)**. Server changes were
+pasted directly into the Server Script records; frontend went via push → Sahil build.
+Backups of every edited script were saved before changes (prod + dev).
+
+### 1. Shared-doctype trap cleanup (PROD)
+The Aug 28 migration had left **Custom DocPerm** rows on shared/core doctypes, which
+makes Frappe ignore their standard perms — this had locked out HR/Sales/Accounts
+users ERP-wide (Company was readable by HR Manager only) and 403'd coordinators on
+the Jobs tab ("No permission for Designation").
+- **Restored Original Permissions** on **Designation**, **Company**, **Department** →
+  back to Frappe standard. Verified: Designation (HR User, Sales User), Company (full
+  operational set), Department (HR Manager, HR User, Academics User, Employee).
+- **RULE (hard):** never put Custom DocPerms on shared/core doctypes for this app.
+  Reach them only through wf_ gateway APIs. This supersedes the Aug 24 "Custom
+  DocPerms — HR Manager read on Company + Department, WF HR Manager … + Designation"
+  note — those rows are now removed.
+- The Aug 24 migration also created 3 positions **directly, bypassing approval**
+  (see item 7).
+
+### 2. New gateway APIs (so the app never touches shared doctypes directly)
+| Script | Method | Guest | Purpose |
+|---|---|---|---|
+| wf get designations | wf_get_designations | ❌ | Returns all Designations (list of names) |
+| wf get companies | wf_get_companies | ❌ | Returns all Companies (list of names) |
+| wf get departments | wf_get_departments | ❌ | Returns all Departments ([{name, company}]) |
+All use `frappe.get_all` (bypasses caller perms) so shared doctypes stay standard.
+
+### 3. Coordinator scoping — server (WF Recruitment Coordinator sees only their own)
+Each written as "if Coordinator and not privileged → filter to assigned_hr = self;
+else unchanged". HR / Leadership / Hiring Manager / System Manager behaviour is
+untouched. Scoping does NOT apply to a coordinator who also holds a privileged role
+(e.g. dev's damini/aditi have System Manager, so they see all — expected).
+| Script | Change |
+|---|---|
+| wf_get_job_openings | Coordinator → only positions where assigned_hr = self |
+| wf_get_dashboard_data | Coordinator → only applicants for their assigned positions |
+| wf_get_interview_calendar_data | Coordinator → only interviews for their assigned positions |
+
+### 4. Position edit / lifecycle guards
+| Script | Change |
+|---|---|
+| wf_update_job_opening | Full position edit now **HR Manager + System Manager only** (closed a hole where ANY logged-in user could edit ANY position — it had no role check) |
+| wf_hr_position_action | Coordinators may **hold / close / reactivate their OWN positions**; **reassign stays HR-only**; acting on another owner's position is blocked. HR unchanged |
+
+### 5. Direct-creation lockdown — enforces "every position needs Priyesh's approval"
+Guard block prepended (marker `# WF-ROLE-GUARD-V1`), original logic preserved:
+| Script | Now allowed |
+|---|---|
+| wf_create_job_opening | **System Manager only** — positions can only be born via requisition → Priyesh approves → wf_hr_publish_requisition. Blocks HR + coordinators from direct creation |
+| wf_delete_job_opening | HR Manager + System Manager |
+| wf_save_interview_template | HR Manager + System Manager |
+| wf_delete_interview_template | HR Manager + System Manager |
+NOTE: the requisition create/approve backend was already correct — it never
+auto-approves, and HR cannot self-approve (needs WF Leadership). The "auto-approving"
+symptom was the direct-create side door above, not the requisition flow.
+
+### 6. Frontend changes (JobsTab.vue, CandidatesTab.vue) — pushed to main
+Role flags added (isHR / isCoordinator / isSysMgr from frappe.user_roles).
+**JobsTab.vue:**
+- Hiring Dashboard sub-nav hidden for coordinators; they default to Job Openings.
+- "+ New Job Opening" and "+ New Template" → HR only.
+- Job Openings inline status dropdown → HR only; coordinators change status via the
+  position detail hold/close/reopen buttons (which call wf_hr_position_action).
+- Template Edit/Delete and both detail-panel Edit/Delete → HR only (coordinators view-only).
+- Dashboard filter gained an "All positions" option.
+- loadDepartments/loadDesignations → wf_get_departments / wf_get_designations.
+**CandidatesTab.vue:**
+- loadCompanies/loadDepartments → wf_get_companies / wf_get_departments (coordinators
+  onboarding no longer 403 on shared doctypes).
+- **Bug fix:** loadJobs was doing `res.jobs` on a bare array → job filter was always
+  empty; now `Array.isArray(res) ? res : (res.jobs||[])`.
+- Pipeline now shows only the selected status column when a status filter is chosen.
+**Product rule confirmed:** once a position is assigned to a coordinator, they handle
+everything on it (candidates, interviews, offers, onboarding, own-position status).
+
+### 7. Data cleanup needed (not code)
+3 positions were created directly before the lock and skipped Priyesh's approval:
+**Hr Cordinator** (by Asha), **Senior QA** and **Sr. Sales Specialist** (by Thoshal).
+Locking the door doesn't remove them — decide with Priyesh/Asha whether to close and
+re-raise them as requisitions.
+
+### 8. Still open / flagged
+- `loadInterviewers` (both tabs) still uses `get_list('User')`. If a coordinator sees
+  an empty interviewer dropdown when scheduling, add a `wf_get_users` gateway.
+- CandidatesTab `changeStatus` still posts `{applicant_name, status}` to
+  wf_update_applicant_status — signature unverified; test a status change as coordinator.
+- Google OAuth under hr@ (Meet links on interview mail) still pending — parked; the
+  hr@ token expires every 7 days because the project is in Testing mode (fix: set the
+  OAuth project to Internal + regenerate the token; needs the hr@ login).
+
+---
+
+## Small edits to existing tables (apply these)
+
+- **Header line** → `**Last updated: Sep 1, 2026** (previous snapshot: Aug 28, 2026)`
+- **Roles table** → WF Recruitment Coordinator access is now enforced server-side
+  (own positions/candidates/interviews only; no create/edit/delete of positions or
+  templates; can hold/close/reopen own positions).
+- **Custom DocPerms (Aug 24) note** → mark SUPERSEDED: the Company/Department/Designation
+  custom rows were removed Sep 1 (see Sep 1 §1). WF-own doctype Custom DocPerms remain.
+- **Pending Items** → move to Resolved: "Scope CandidatesTab for WF Recruitment
+  Coordinator" (done), "Verify wf_get_job_openings … callable by coordinator" (done,
+  scoped). Add new pending: "Data cleanup — close/re-raise the 3 approval-bypassed
+  positions", "Add wf_get_users gateway if coordinator interviewer dropdown is empty".
+- **API Scripts** → add the 3 gateway APIs (§2); annotate wf_create_job_opening /
+  wf_delete_job_opening / wf_save_interview_template / wf_delete_interview_template /
+  wf_update_job_opening / wf_hr_position_action / wf_get_job_openings /
+  wf_get_dashboard_data / wf_get_interview_calendar_data with their new guards/scoping.

@@ -344,12 +344,14 @@ export default {
             });
         },
         pipelineColumns() {
-            const cols = [
+            let cols = [
                 'Applied', 'Under Screening', 'Shortlisted',
                 'Interview Scheduled', 'Interview In Progress',
                 'All Rounds Complete', 'Selected', 'Offer Sent',
                 'Offer Accepted', 'Onboarding Initiated', 'Onboarded'
             ];
+            // When a status is chosen, show only that column
+            if (this.filterStatus) cols = cols.filter(s => s === this.filterStatus);
             return cols.map(status => ({
                 status,
                 candidates: this.filteredCandidates.filter(c => c.status === status)
@@ -425,7 +427,8 @@ export default {
         async loadJobs() {
             try {
                 const res = await this.api('wf_get_job_openings');
-                this.jobs = res.jobs || [];
+                // wf_get_job_openings returns a bare array
+                this.jobs = Array.isArray(res) ? res : (res.jobs || []);
             } catch (e) { this.jobs = []; }
         },
         async loadInterviewers() {
@@ -441,22 +444,16 @@ export default {
         },
         async loadCompanies() {
             try {
-                this.companies = await this.api('frappe.client.get_list', {
-                    doctype: 'Company',
-                    fields: ['name'],
-                    limit_page_length: 0,
-                    order_by: 'name asc'
-                });
+                // wf_get_companies returns ["name", ...]
+                const r = await this.api('wf_get_companies');
+                this.companies = (r || []).map(n => ({ name: n }));
             } catch (e) { this.companies = []; }
         },
         async loadDepartments() {
             try {
-                this.departments = await this.api('frappe.client.get_list', {
-                    doctype: 'Department',
-                    fields: ['name'],
-                    limit_page_length: 0,
-                    order_by: 'name asc'
-                });
+                // wf_get_departments returns [{name, company}]
+                const r = await this.api('wf_get_departments');
+                this.departments = (r || []).map(d => ({ name: d.name || d }));
             } catch (e) { this.departments = []; }
         },
         async loadCandidateDetailUrl(applicantName) {

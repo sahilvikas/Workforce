@@ -369,19 +369,14 @@ export default {
 			this.loading = true;
 			try {
 				const res = await this.api('wf_get_interview_calendar_data');
-				const allInterviews = res.interviews || res || [];
+				// The API already scopes correctly per role (HR/System = all,
+				// coordinator = interviews for their assigned positions). Do NOT
+				// re-filter by interviewer client-side — that hid interviews from
+				// coordinators who own the position but didn't personally conduct them.
+				this.interviews = Array.isArray(res) ? res : (res.interviews || []);
 
-				// Check if user is HR Manager
 				const userRoles = (window.frappe && frappe.user_roles) || [];
 				this.isHR = userRoles.includes('WF HR Manager') || userRoles.includes('System Manager');
-
-				if (this.isHR) {
-					this.interviews = allInterviews;
-				} else {
-					this.interviews = allInterviews.filter(
-						iv => iv.interviewer === frappe.session.user
-					);
-				}
 			} catch (e) {
 				try {
 					this.interviews = await this.api('frappe.client.get_list', {

@@ -166,6 +166,14 @@ app_license = "mit"
 # 	],
 # }
 
+scheduler_events = {
+	"cron": {
+		"*/3 * * * *": [
+			"workforce.resume_screener.run_resume_screening"
+		]
+	}
+}
+
 # Testing
 # -------
 

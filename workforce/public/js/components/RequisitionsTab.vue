@@ -417,12 +417,8 @@ export default {
 
 		async loadDepartments() {
 			try {
-				this.departments = await this.api('frappe.client.get_list', {
-					doctype: 'Department',
-					fields: ['name'],
-					limit_page_length: 0,
-					order_by: 'name asc'
-				});
+				const r = await this.api('wf_get_departments');
+				this.departments = (r || []).map(d => ({ name: d.name || d }));
 			} catch (e) { this.departments = []; }
 		},
 

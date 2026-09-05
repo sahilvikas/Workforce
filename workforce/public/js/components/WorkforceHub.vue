@@ -58,7 +58,7 @@ export default {
 			allTabs: [
 				{ key: 'jobs',         label: 'Jobs',          icon: '📋', roles: ['System Manager', 'WF HR Manager', 'WF Leadership', 'WF Recruitment Coordinator'] },
 				{ key: 'requisitions', label: 'Requisitions',  icon: '📝', roles: ['System Manager', 'WF HR Manager', 'WF Leadership', 'WF Hiring Manager'] },
-				{ key: 'approvals',    label: 'Approvals',     icon: '✅', roles: ['System Manager', 'WF Leadership'] },
+				{ key: 'approvals',    label: 'Approvals',     icon: '✅', roles: ['System Manager', 'WF Leadership', 'WF CMO'] },
 				{ key: 'candidates',   label: 'Candidates',    icon: '👥', roles: ['System Manager', 'WF HR Manager', 'WF Recruitment Coordinator'] },
 				{ key: 'interviews',   label: 'Interviews',    icon: '🗓️', roles: ['System Manager', 'WF HR Manager', 'WF Recruitment Coordinator'] },
 				{ key: 'talent',       label: 'Talent Search', icon: '🔍', roles: ['System Manager', 'WF HR Manager', 'WF Recruitment Coordinator'] }

@@ -4,8 +4,12 @@
 
 		<div class="tab-header">
 			<div>
-				<h2>Approval Queue</h2>
-				<p class="tab-subtitle">Requisitions awaiting your review</p>
+				<h2>{{ isCMO ? 'Team Approvals' : 'Approval Queue' }}</h2>
+				<p class="tab-subtitle">
+					{{ isCMO
+						? 'Requisitions from your team — approve to send on to Priyesh for final approval'
+						: 'Requisitions awaiting your review' }}
+				</p>
 			</div>
 		</div>
 
@@ -24,6 +28,7 @@
 					Awaiting your review
 				</h3>
 				<span class="section-count">{{ pendingRequisitions.length }}</span>
+				<span v-if="isCMO" class="section-hint">You are the first approver — Priyesh sees these only after you approve</span>
 			</div>
 
 			<div class="requisition-cards">
@@ -59,7 +64,7 @@
 
 					<div class="req-card-actions">
 						<button class="btn-approve" @click="openApproveDialog(r)">
-							<span class="btn-icon">✓</span> Approve
+							<span class="btn-icon">✓</span> {{ isCMO ? 'Approve & send to Priyesh' : 'Approve' }}
 						</button>
 						<button class="btn-request-changes" @click="openRequestChangesDialog(r)">
 							<span class="btn-icon">↻</span> Request Changes
@@ -89,8 +94,8 @@
 							<th>Position</th>
 							<th>Team</th>
 							<th>Requester</th>
-							<th>Your Decision</th>
-							<th>Decided On</th>
+							<th v-if="!isCMO">Your Decision</th>
+							<th v-if="!isCMO">Decided On</th>
 							<th>Current Status</th>
 						</tr>
 					</thead>
@@ -99,8 +104,8 @@
 							<td class="req-title-cell">{{ r.title }}</td>
 							<td>{{ r.team }}</td>
 							<td>{{ r.requester_full_name || r.requester }}</td>
-							<td><Badge :label="r.leadership_decision || '—'" /></td>
-							<td>{{ formatDate(r.leadership_decision_on) }}</td>
+							<td v-if="!isCMO"><Badge :label="r.leadership_decision || '—'" /></td>
+							<td v-if="!isCMO">{{ formatDate(r.leadership_decision_on) }}</td>
 							<td><Badge :label="r.status" /></td>
 						</tr>
 					</tbody>
@@ -154,6 +159,10 @@
 						<div class="fact-label">Requester</div>
 						<div class="fact-value">{{ detailData.requisition.requester_name }}</div>
 					</div>
+					<div class="fact-item" v-if="detailData.requisition.approving_manager_name">
+						<div class="fact-label">First Approver</div>
+						<div class="fact-value">{{ detailData.requisition.approving_manager_name }}</div>
+					</div>
 				</div>
 
 				<!-- Description -->
@@ -168,10 +177,10 @@
 					<div class="section-body">{{ detailData.requisition.required_skills }}</div>
 				</div>
 
-				<!-- Previous leadership comment (if revision) -->
+				<!-- Previous comment (if revision) -->
 				<div v-if="detailData.requisition.revision_count > 0 && detailData.requisition.leadership_comment" class="detail-section revision-history">
 					<div class="section-title">
-						Your previous comment (before revision)
+						Previous comment (before revision)
 					</div>
 					<div class="section-body">{{ detailData.requisition.leadership_comment }}</div>
 				</div>
@@ -193,7 +202,7 @@
 			</div>
 
 			<template #actions>
-				<template v-if="detailData && detailData.permissions.can_approve">
+				<template v-if="detailData && canDecideOn(detailData.permissions)">
 					<button class="btn-reject" @click="openRejectDialog(detailData.requisition)">Reject</button>
 					<button class="btn-request-changes" @click="openRequestChangesDialog(detailData.requisition)">Request Changes</button>
 					<button class="btn-approve" @click="openApproveDialog(detailData.requisition)">Approve</button>
@@ -202,7 +211,8 @@
 		</DetailPanel>
 
 		<!-- ==================== APPROVE DIALOG ==================== -->
-		<Dialog :visible="showApproveDialog" title="Approve Requisition" submitLabel="Approve"
+		<Dialog :visible="showApproveDialog" :title="isCMO ? 'Approve & Send to Priyesh' : 'Approve Requisition'"
+			:submitLabel="isCMO ? 'Approve & Send' : 'Approve'"
 			:loading="deciding" size="sm" @close="showApproveDialog = false" @submit="submitDecision('Approved')">
 			<p class="dialog-intro">
 				Approve <strong>{{ actionReq && actionReq.title }}</strong> for {{ actionReq && (actionReq.requester_full_name || actionReq.requester) }}?
@@ -210,10 +220,12 @@
 			<div class="form-group full">
 				<label>Comment (optional)</label>
 				<textarea v-model="decisionComment" class="form-input form-textarea" rows="3"
-					placeholder="Any notes for HR..."></textarea>
+					:placeholder="isCMO ? 'Any context for Priyesh...' : 'Any notes for HR...'"></textarea>
 			</div>
 			<p class="dialog-note approve-note">
-				HR will be notified and can proceed to publish + assign a recruiter.
+				{{ isCMO
+					? 'This goes to Priyesh for final approval. It is not live until he approves and HR publishes it.'
+					: 'HR will be notified and can proceed to publish + assign a recruiter.' }}
 			</p>
 		</Dialog>
 
@@ -245,7 +257,9 @@
 					placeholder="Explain why this position is being rejected..."></textarea>
 			</div>
 			<p class="dialog-note reject-note">
-				The manager will be notified. To hire for this role later, they'll need to create a new requisition.
+				{{ isCMO
+					? 'The requisition stops here — it will not go to Priyesh. The manager will be notified and would need to raise a new one.'
+					: 'The manager will be notified. To hire for this role later, they\'ll need to create a new requisition.' }}
 			</p>
 		</Dialog>
 	</div>
@@ -264,6 +278,7 @@ export default {
 	data() {
 		return {
 			requisitions: [],
+			roleView: '',
 			loading: false,
 			deciding: false,
 			showPanel: false,
@@ -279,14 +294,30 @@ export default {
 	},
 
 	computed: {
+		// The API decides the view: 'cmo' for an approving manager (Samarth),
+		// 'leadership' for Priyesh, 'hr_manager' for HR/System Manager.
+		isCMO() {
+			return this.roleView === 'cmo';
+		},
+
 		pendingRequisitions() {
+			const waitingStatus = this.isCMO ? 'Pending CMO Approval' : 'Pending Approval';
 			return this.requisitions
-				.filter(r => r.status === 'Pending Approval')
+				.filter(r => {
+					if (r.status !== waitingStatus) return false;
+					// CMO only acts on requisitions actually routed to him
+					if (this.isCMO && !r.awaiting_me) return false;
+					return true;
+				})
 				.sort((a, b) => (b.days_pending || 0) - (a.days_pending || 0));  // oldest first
 		},
+
 		historyRequisitions() {
+			const done = this.isCMO
+				? ['Pending Approval', 'Approved', 'Rejected by CMO', 'Needs Revision', 'Published', 'Rejected']
+				: ['Approved', 'Rejected', 'Needs Revision', 'Published'];
 			return this.requisitions
-				.filter(r => ['Approved', 'Rejected', 'Needs Revision', 'Published'].includes(r.status))
+				.filter(r => done.includes(r.status))
 				.sort((a, b) => {
 					const dateA = new Date(a.leadership_decision_on || a.creation || 0);
 					const dateB = new Date(b.leadership_decision_on || b.creation || 0);
@@ -318,10 +349,17 @@ export default {
 			try {
 				const res = await this.api('wf_get_requisitions');
 				this.requisitions = res.requisitions || [];
+				this.roleView = res.role_view || '';
 			} catch (e) {
 				this.showToast('Failed to load requisitions', 'error');
 			}
 			this.loading = false;
+		},
+
+		// Either approver can act, depending on which stage the requisition is at
+		canDecideOn(perms) {
+			if (!perms) return false;
+			return !!(perms.can_approve || perms.can_cmo_decide);
 		},
 
 		daysClass(r) {
@@ -383,9 +421,15 @@ export default {
 				return;
 			}
 
+			// Route to the right decision API for this stage.
+			// A requisition at "Pending CMO Approval" is always the CMO's call,
+			// even if a System Manager is the one clicking.
+			const atCmoStage = this.actionReq && this.actionReq.status === 'Pending CMO Approval';
+			const method = (this.isCMO || atCmoStage) ? 'wf_cmo_decide' : 'wf_leadership_decide';
+
 			this.deciding = true;
 			try {
-				await this.api('wf_leadership_decide', {
+				await this.api(method, {
 					data: {
 						requisition: this.actionReq.name,
 						decision: decision,
@@ -393,11 +437,17 @@ export default {
 					}
 				});
 
-				const messages = {
+				const cmoMessages = {
+					'Approved': 'Approved — sent to Priyesh for final approval',
+					'Request Changes': 'Sent back to the manager for revision',
+					'Rejected': 'Requisition rejected'
+				};
+				const leadMessages = {
 					'Approved': 'Requisition approved',
 					'Request Changes': 'Sent back to manager for revision',
 					'Rejected': 'Requisition rejected'
 				};
+				const messages = (method === 'wf_cmo_decide') ? cmoMessages : leadMessages;
 				this.showToast(messages[decision] || 'Decision recorded');
 
 				this.showApproveDialog = false;
@@ -468,6 +518,7 @@ export default {
 	align-items: center;
 	gap: 12px;
 	margin-bottom: 16px;
+	flex-wrap: wrap;
 }
 .section-header h3 {
 	margin: 0;
@@ -497,6 +548,7 @@ export default {
 	font-size: 13px;
 	font-weight: 600;
 }
+.section-hint { color: #6b7280; font-size: 13px; }
 
 .requisition-cards { display: flex; flex-direction: column; gap: 16px; }
 

@@ -9,7 +9,7 @@
             <KpiCard label="Offer Sent" :value="stats.offer_sent" />
         </div>
 
-        <!-- Toolbar with search + filters + view toggle -->
+        <!-- Toolbar with search + filters + view toggles -->
         <div class="toolbar">
             <div class="toolbar-left">
                 <input v-model="searchQuery" placeholder="Search by name, email..." class="search-input" />

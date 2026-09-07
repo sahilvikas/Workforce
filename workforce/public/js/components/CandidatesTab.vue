@@ -139,7 +139,7 @@
                         <button v-if="selected.status === 'Shortlisted'" class="btn-schedule" @click="openSchedule(selected)">
                             <span class="btn-icon">📅</span> Schedule Interview
                         </button>
-                        <button v-if="selected.status === 'Selected'" class="btn-offer" @click="openOffer(selected)">
+                        <button v-if="canCreateOffer" class="btn-offer" @click="openOffer(selected)">
                             <span class="btn-icon">📝</span> Create Offer
                         </button>
                     </div>
@@ -151,10 +151,136 @@
                         <button v-if="selected.status === 'Shortlisted'" class="btn-schedule" @click="openSchedule(selected)">
                             <span class="btn-icon">📅</span> Schedule Interview
                         </button>
-                        <button v-if="selected.status === 'Selected'" class="btn-offer" @click="openOffer(selected)">
+                        <button v-if="canCreateOffer" class="btn-offer" @click="openOffer(selected)">
                             <span class="btn-icon">📝</span> Create Offer
                         </button>
                     </div>
+                </div>
+
+                <!-- ==================== BACKGROUND VERIFICATION ==================== -->
+                <div class="detail-section" v-if="showBgvSection">
+                    <h4>Background Verification</h4>
+
+                    <div v-if="bgvLoading" class="bgv-loading">Loading check…</div>
+
+                    <!-- no check yet -->
+                    <template v-else-if="!bgv">
+                        <p class="bgv-help">
+                            Verification runs before the offer letter. The candidate is emailed a form to list their
+                            last two employers, each employer is contacted separately, and no offer can be issued
+                            until you clear the result.
+                        </p>
+                        <button v-if="canDecideBgv" class="btn-bgv" @click="startBgv" :disabled="bgvBusy">
+                            {{ bgvBusy ? 'Starting…' : 'Start Background Check' }}
+                        </button>
+                        <p v-else class="bgv-help">Only HR can start a background check.</p>
+                    </template>
+
+                    <!-- a check exists -->
+                    <template v-else>
+                        <div class="bgv-head">
+                            <Badge :label="bgv.status" />
+                            <span class="bgv-meta">
+                                {{ bgv.companies_replied }} of {{ bgv.companies_total }} verifier{{ bgv.companies_total === 1 ? '' : 's' }} replied
+                                <template v-if="bgv.candidate_submitted_on"> · submitted {{ formatDate(bgv.candidate_submitted_on) }}</template>
+                            </span>
+                        </div>
+
+                        <div v-if="bgv.status === 'Awaiting Candidate'" class="bgv-note">
+                            Waiting for the candidate to fill in their employment history. The link expires
+                            {{ formatDate(bgv.token_expires_on) }}.
+                            <div v-if="bgv.access_token" class="bgv-link-row">
+                                <input :value="bgvFormUrl" readonly class="form-input" style="flex:1;font-size:12px;background:#fff;" @focus="$event.target.select()" />
+                                <button class="btn-secondary" @click="copyUrl(bgvFormUrl)" style="padding:8px 16px;">Copy link</button>
+                            </div>
+                        </div>
+
+                        <div v-if="bgv.hr_decision_on" class="bgv-decided">
+                            Marked <strong>{{ bgv.status }}</strong> by {{ bgv.hr_decision_by }} on {{ formatDate(bgv.hr_decision_on) }}.
+                            <template v-if="bgv.hr_notes"><br>{{ bgv.hr_notes }}</template>
+                        </div>
+
+                        <!-- per company -->
+                        <div v-for="c in bgv.companies" :key="c.row" class="bgv-co">
+                            <div class="bgv-co-head">
+                                <strong>{{ c.company_name }}</strong>
+                                <Badge :label="c.responded_on ? c.overall_verdict : 'No response yet'" />
+                            </div>
+                            <table class="bgv-table">
+                                <thead>
+                                    <tr><th>Field</th><th>Candidate said</th><th>Employer</th></tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td class="bgv-f">Designation</td>
+                                        <td>{{ c.designation || '—' }}</td>
+                                        <td><span :class="verdictClass(c.designation_verdict, c.responded_on)">{{ verdictText(c.designation_verdict, c.responded_on) }}</span></td>
+                                    </tr>
+                                    <tr>
+                                        <td class="bgv-f">Period</td>
+                                        <td>{{ c.period || '—' }}</td>
+                                        <td><span :class="verdictClass(c.period_verdict, c.responded_on)">{{ verdictText(c.period_verdict, c.responded_on) }}</span></td>
+                                    </tr>
+                                    <tr v-if="c.employee_id">
+                                        <td class="bgv-f">Employee ID</td>
+                                        <td>{{ c.employee_id }}</td>
+                                        <td><span class="v-none">—</span></td>
+                                    </tr>
+                                    <tr v-if="c.remuneration">
+                                        <td class="bgv-f">Last drawn salary</td>
+                                        <td>{{ c.remuneration }}</td>
+                                        <td><span :class="verdictClass(c.remuneration_verdict, c.responded_on)">{{ verdictText(c.remuneration_verdict, c.responded_on) }}</span></td>
+                                    </tr>
+                                    <tr v-if="c.reported_to">
+                                        <td class="bgv-f">Reported to</td>
+                                        <td>{{ c.reported_to }}</td>
+                                        <td><span :class="verdictClass(c.reported_to_verdict, c.responded_on)">{{ verdictText(c.reported_to_verdict, c.responded_on) }}</span></td>
+                                    </tr>
+                                    <tr v-if="c.reason_for_leaving">
+                                        <td class="bgv-f">Reason for leaving</td>
+                                        <td>{{ c.reason_for_leaving }}</td>
+                                        <td><span :class="verdictClass(c.reason_verdict, c.responded_on)">{{ verdictText(c.reason_verdict, c.responded_on) }}</span></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+
+                            <div class="bgv-verifier">
+                                Verifier: {{ c.verifier_name }}<template v-if="c.verifier_designation"> ({{ c.verifier_designation }})</template> · {{ c.verifier_email }}
+                                <template v-if="c.responded_on"> · replied {{ formatDate(c.responded_on) }}</template>
+                            </div>
+
+                            <div v-if="c.mismatch_notes" class="bgv-mismatch">
+                                <strong>What did not match:</strong> {{ c.mismatch_notes }}
+                            </div>
+                            <div v-if="c.additional_comments" class="bgv-note" style="margin-top:8px;">
+                                <strong>Also said:</strong> {{ c.additional_comments }}
+                            </div>
+
+                            <button v-if="!c.responded_on && canDecideBgv" class="btn-bgv-small"
+                                @click="overrideCompany(c)" :disabled="bgvBusy">
+                                Record a response manually
+                            </button>
+                        </div>
+
+                        <!-- HR decision -->
+                        <div v-if="canDecideBgv && !bgvDecided" class="bgv-decide">
+                            <p class="bgv-help">
+                                Nothing here is automatic — all-green verdicts still need your judgement.
+                                Clearing this unlocks the offer letter. Waive it for freshers or an employer
+                                that no longer exists.
+                            </p>
+                            <div class="form-group">
+                                <label>Notes (required to fail or waive)</label>
+                                <textarea v-model="bgvNotes" rows="2" class="form-input" style="width:100%;"
+                                    placeholder="What you concluded and why"></textarea>
+                            </div>
+                            <div class="status-actions" style="margin-top:10px;">
+                                <button class="btn-bgv-clear" @click="decideBgv('Cleared')" :disabled="bgvBusy">Clear — allow the offer</button>
+                                <button class="btn-bgv-fail" @click="decideBgv('Failed')" :disabled="bgvBusy">Fail — no offer</button>
+                                <button class="btn-bgv-na" @click="decideBgv('Not Applicable')" :disabled="bgvBusy">Waive</button>
+                            </div>
+                        </div>
+                    </template>
                 </div>
 
                 <div class="detail-section" v-if="selected.status === 'Onboarding Initiated'">
@@ -306,7 +432,9 @@ export default {
             statuses: [
                 'Applied', 'Under Screening', 'Shortlisted', 'Rejected at Screening',
                 'Interview Scheduled', 'Interview In Progress', 'All Rounds Complete',
-                'Selected', 'Not Selected', 'Offer Sent', 'Offer Accepted',
+                'Selected', 'Not Selected',
+                'BGV Initiated', 'BGV Cleared', 'BGV Failed', 'BGV Not Applicable',
+                'Offer Sent', 'Offer Accepted',
                 'Offer Declined', 'Onboarding Initiated', 'Onboarded'
             ],
             searchQuery: '',
@@ -326,6 +454,12 @@ export default {
             onboardForm: { company: '', department: '', company_email: '', temp_password: '' },
             onboardLoading: false,
             candidateDetailUrl: '',
+            // --- background verification ---
+            bgv: null,
+            bgvLoading: false,
+            bgvBusy: false,
+            bgvNotes: '',
+            canDecideBgv: false,
             loading: false,
             toast: { message: '', type: 'success', visible: false }
         };
@@ -347,7 +481,9 @@ export default {
             let cols = [
                 'Applied', 'Under Screening', 'Shortlisted',
                 'Interview Scheduled', 'Interview In Progress',
-                'All Rounds Complete', 'Selected', 'Offer Sent',
+                'All Rounds Complete', 'Selected',
+                'BGV Initiated', 'BGV Cleared',
+                'Offer Sent',
                 'Offer Accepted', 'Onboarding Initiated', 'Onboarded'
             ];
             // When a status is chosen, show only that column
@@ -369,6 +505,39 @@ export default {
                 'Interview Scheduled': ['Not Selected']
             };
             return transitions[current] || [];
+        },
+
+        // The BGV panel appears from Selected onwards, and stays visible
+        // afterwards so the result can still be read.
+        showBgvSection() {
+            if (!this.selected) return false;
+            const s = this.selected.status;
+            const bgvStatuses = [
+                'Selected', 'BGV Initiated', 'BGV Cleared', 'BGV Failed', 'BGV Not Applicable',
+                'Offer Sent', 'Offer Accepted', 'Onboarding Initiated', 'Onboarded'
+            ];
+            return bgvStatuses.indexOf(s) !== -1;
+        },
+
+        bgvDecided() {
+            if (!this.bgv) return false;
+            return ['Cleared', 'Failed', 'Not Applicable'].indexOf(this.bgv.status) !== -1;
+        },
+
+        // wf_create_offer refuses unless the check is Cleared or Not Applicable,
+        // so the button only appears when the server would actually allow it.
+        canCreateOffer() {
+            if (!this.selected) return false;
+            const s = this.selected.status;
+            const eligible = ['Selected', 'BGV Cleared', 'BGV Not Applicable'];
+            if (eligible.indexOf(s) === -1) return false;
+            if (!this.bgv) return false;
+            return ['Cleared', 'Not Applicable'].indexOf(this.bgv.status) !== -1;
+        },
+
+        bgvFormUrl() {
+            if (!this.bgv || !this.bgv.access_token) return '';
+            return window.location.origin + '/bgv-form?token=' + this.bgv.access_token;
         }
     },
     mounted() {
@@ -400,6 +569,18 @@ export default {
             if (score >= 70) return 'score-high';
             if (score >= 40) return 'score-mid';
             return 'score-low';
+        },
+        verdictText(v, responded) {
+            if (!responded) return '—';
+            if (v === 'Confirmed') return 'Confirmed';
+            if (v === 'Mismatch') return 'Mismatch';
+            return 'Not checked';
+        },
+        verdictClass(v, responded) {
+            if (!responded) return 'v-none';
+            if (v === 'Confirmed') return 'v-ok';
+            if (v === 'Mismatch') return 'v-bad';
+            return 'v-none';
         },
         async loadCandidates() {
 			this.loading = true;
@@ -472,6 +653,102 @@ export default {
                 }
             } catch (e) { this.candidateDetailUrl = ''; }
         },
+
+        // ---------------- background verification ----------------
+        async loadBgv(applicantName) {
+            this.bgv = null;
+            this.bgvNotes = '';
+            this.canDecideBgv = false;
+            if (!applicantName || !this.showBgvSection) return;
+            this.bgvLoading = true;
+            try {
+                const res = await this.api('wf_get_bgv_checks', { applicant: applicantName });
+                if (res && res.state === 'success') {
+                    this.bgv = res.check || null;
+                    this.canDecideBgv = !!res.can_decide;
+                }
+            } catch (e) {
+                // a coordinator without permission just sees no panel content
+                this.bgv = null;
+            }
+            this.bgvLoading = false;
+        },
+
+        async startBgv() {
+            if (!this.selected) return;
+            if (!confirm('Start background verification for ' + this.selected.applicant_name +
+                         '? They will be emailed a form to list their previous employers.')) return;
+            this.bgvBusy = true;
+            try {
+                const res = await this.api('wf_start_bgv', { data: { applicant: this.selected.name } });
+                this.showToast((res && res.message) || 'Background check started', 'success');
+                await this.loadBgv(this.selected.name);
+                this.loadCandidates();
+            } catch (e) {
+                this.showToast('Could not start the background check', 'error');
+            }
+            this.bgvBusy = false;
+        },
+
+        async decideBgv(action) {
+            if (!this.bgv) return;
+            const notes = (this.bgvNotes || '').trim();
+            if ((action === 'Failed' || action === 'Not Applicable') && !notes) {
+                this.showToast('Please give a reason before marking this ' + action, 'error');
+                return;
+            }
+            const confirmText = {
+                'Cleared': 'Clear this background check? The offer letter can then be issued.',
+                'Failed': 'Mark this check as Failed? No offer will be issued for this candidate.',
+                'Not Applicable': 'Waive verification for this candidate? The offer letter can then be issued.'
+            };
+            if (!confirm(confirmText[action])) return;
+
+            this.bgvBusy = true;
+            try {
+                const res = await this.api('wf_bgv_hr_decide', {
+                    data: { bgv: this.bgv.name, action: action, notes: notes }
+                });
+                this.showToast((res && res.message) || 'Decision recorded', 'success');
+                this.bgvNotes = '';
+                await this.loadBgv(this.selected.name);
+                this.loadCandidates();
+            } catch (e) {
+                this.showToast('Could not record the decision', 'error');
+            }
+            this.bgvBusy = false;
+        },
+
+        async overrideCompany(c) {
+            if (!this.bgv) return;
+            const notes = prompt(
+                'Recording a response for ' + c.company_name + ' manually.\n\n' +
+                'What was confirmed, and how? (e.g. spoke to their HR on the phone, all details match)');
+            if (notes === null) return;
+            const clean = (notes || '').trim();
+            if (!clean) {
+                this.showToast('Please record what was confirmed and how', 'error');
+                return;
+            }
+            this.bgvBusy = true;
+            try {
+                const res = await this.api('wf_bgv_hr_decide', {
+                    data: {
+                        bgv: this.bgv.name,
+                        action: 'override_company',
+                        company_row: c.row,
+                        verdict: 'Verified Correct',
+                        notes: clean
+                    }
+                });
+                this.showToast((res && res.message) || 'Response recorded', 'success');
+                await this.loadBgv(this.selected.name);
+            } catch (e) {
+                this.showToast('Could not record the response', 'error');
+            }
+            this.bgvBusy = false;
+        },
+
         copyUrl(url) {
             if (!url) return;
             navigator.clipboard.writeText(url).then(() => {
@@ -521,9 +798,11 @@ export default {
                 });
             } catch (e) { this.interviewHistory = []; }
             this.loadCandidateDetailUrl(iv.name);
+            this.loadBgv(iv.name);
         },
         closeDetail() {
             this.selected = null;
+            this.bgv = null;
         },
         async changeStatus() {
             if (!this.newStatus) return;
@@ -535,6 +814,7 @@ export default {
                 this.showToast('Status updated', 'success');
                 this.selected.status = this.newStatus;
                 this.loadCandidates();
+                this.loadBgv(this.selected.name);
             } catch (e) {
                 this.showToast('Failed to update status', 'error');
             }
@@ -866,6 +1146,136 @@ export default {
 }
 .btn-offer:hover { background: #d97706; }
 .btn-icon { font-size: 16px; }
+
+/* ---------- background verification ---------- */
+.bgv-loading { color: #6b7280; font-size: 13px; padding: 12px 0; }
+.bgv-help { color: #6b7280; font-size: 13px; line-height: 1.6; margin: 0 0 12px; }
+.bgv-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin: 0 0 12px;
+}
+.bgv-meta { color: #6b7280; font-size: 13px; }
+.bgv-note {
+    background: #eff6ff;
+    border-left: 3px solid #3b82f6;
+    padding: 10px 14px;
+    border-radius: 4px;
+    color: #1e40af;
+    font-size: 13px;
+    line-height: 1.6;
+    margin: 0 0 12px;
+}
+.bgv-link-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-top: 10px;
+}
+.bgv-decided {
+    background: #f0fdf4;
+    border-left: 3px solid #10b981;
+    padding: 10px 14px;
+    border-radius: 4px;
+    color: #065f46;
+    font-size: 13px;
+    line-height: 1.6;
+    margin: 0 0 12px;
+}
+.bgv-co {
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 14px;
+    margin: 0 0 12px;
+    background: #fff;
+}
+.bgv-co-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    margin: 0 0 10px;
+    flex-wrap: wrap;
+}
+.bgv-co-head strong { color: #111827; font-size: 15px; }
+.bgv-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.bgv-table th {
+    text-align: left;
+    padding: 6px 8px;
+    font-size: 11px;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-bottom: 1px solid #e5e7eb;
+    background: #f9fafb;
+}
+.bgv-table td {
+    padding: 8px;
+    border-bottom: 1px solid #f3f4f6;
+    color: #374151;
+    vertical-align: top;
+}
+.bgv-table tr:last-child td { border-bottom: none; }
+.bgv-f { color: #6b7280; font-weight: 600; width: 28%; }
+.v-ok { color: #059669; font-weight: 600; }
+.v-bad { color: #dc2626; font-weight: 700; }
+.v-none { color: #9ca3af; }
+.bgv-verifier { color: #6b7280; font-size: 12px; margin-top: 10px; line-height: 1.5; }
+.bgv-mismatch {
+    background: #fffbeb;
+    border-left: 3px solid #f59e0b;
+    padding: 10px 12px;
+    border-radius: 4px;
+    color: #92400e;
+    font-size: 13px;
+    line-height: 1.5;
+    margin-top: 10px;
+}
+.bgv-decide {
+    border-top: 1px solid #f3f4f6;
+    padding-top: 16px;
+    margin-top: 4px;
+}
+.btn-bgv {
+    background: #4f46e5;
+    color: #fff;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 6px;
+    font-weight: 600;
+    font-size: 14px;
+    cursor: pointer;
+}
+.btn-bgv:hover { background: #4338ca; }
+.btn-bgv:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-bgv-small {
+    background: #fff;
+    color: #4f46e5;
+    border: 1.5px solid #c7d2fe;
+    padding: 7px 14px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 12px;
+}
+.btn-bgv-small:hover { background: #eef2ff; }
+.btn-bgv-clear, .btn-bgv-fail, .btn-bgv-na {
+    padding: 10px 18px;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+}
+.btn-bgv-clear { background: #10b981; color: #fff; border: none; }
+.btn-bgv-clear:hover { background: #059669; }
+.btn-bgv-fail { background: #fff; color: #ef4444; border: 1.5px solid #ef4444; }
+.btn-bgv-fail:hover { background: #ef4444; color: #fff; }
+.btn-bgv-na { background: #fff; color: #6b7280; border: 1.5px solid #d1d5db; }
+.btn-bgv-na:hover { background: #f3f4f6; }
+.btn-bgv-clear:disabled, .btn-bgv-fail:disabled, .btn-bgv-na:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .interview-list { display: flex; flex-direction: column; gap: 12px; }
 .interview-item {

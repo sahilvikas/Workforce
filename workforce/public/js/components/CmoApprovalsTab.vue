@@ -58,11 +58,17 @@
 					<div class="req-card-body">
 						<div class="body-section">
 							<div class="body-label">Description</div>
-							<div class="body-text">{{ shortDesc(r.description) }}</div>
+							<div class="body-text" :class="{ clamped: !isExpanded(r.name, 'desc') }">{{ plain(r.description) }}</div>
+							<button v-if="isLong(r.description)" class="btn-view-more" @click="toggle(r.name, 'desc')">
+								{{ isExpanded(r.name, 'desc') ? 'View less' : 'View more' }}
+							</button>
 						</div>
 						<div v-if="r.business_justification" class="body-section">
 							<div class="body-label">Business justification</div>
-							<div class="body-text">{{ shortDesc(r.business_justification) }}</div>
+							<div class="body-text" :class="{ clamped: !isExpanded(r.name, 'just') }">{{ plain(r.business_justification) }}</div>
+							<button v-if="isLong(r.business_justification)" class="btn-view-more" @click="toggle(r.name, 'just')">
+								{{ isExpanded(r.name, 'just') ? 'View less' : 'View more' }}
+							</button>
 						</div>
 					</div>
 
@@ -281,6 +287,7 @@ export default {
 			detailData: null,
 			actionReq: null,
 			decisionComment: '',
+			expanded: {},
 			toast: { show: false, msg: '', type: 'success' }
 		};
 	},
@@ -352,10 +359,23 @@ export default {
 			return 'days-normal';
 		},
 
-		shortDesc(text) {
+		// description is a Text Editor field, so strip the HTML before showing it
+		plain(text) {
 			const t = (text || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-			if (!t) return 'Not provided';
-			return t.length > 500 ? t.slice(0, 500) + ' …' : t;
+			return t || 'Not provided';
+		},
+
+		isLong(text) {
+			return this.plain(text).length > 110;
+		},
+
+		isExpanded(name, field) {
+			return !!this.expanded[name + ':' + field];
+		},
+
+		toggle(name, field) {
+			const key = name + ':' + field;
+			this.expanded = Object.assign({}, this.expanded, { [key]: !this.expanded[key] });
 		},
 
 		async openDetail(req) {
@@ -615,7 +635,23 @@ export default {
 .body-section { margin-bottom: 8px; }
 .body-section:last-child { margin-bottom: 0; }
 .body-label { font-size: 11px; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
-.body-text { color: #374151; font-size: 13px; line-height: 1.5; }
+.body-text { color: #374151; font-size: 13px; line-height: 1.5; white-space: pre-wrap; }
+.body-text.clamped {
+	display: -webkit-box;
+	-webkit-line-clamp: 1;
+	-webkit-box-orient: vertical;
+	overflow: hidden;
+}
+.btn-view-more {
+	background: transparent;
+	border: none;
+	padding: 4px 0 0;
+	color: #4f46e5;
+	font-size: 12px;
+	font-weight: 600;
+	cursor: pointer;
+}
+.btn-view-more:hover { color: #4338ca; text-decoration: underline; }
 
 .req-card-actions {
 	display: flex;

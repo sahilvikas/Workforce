@@ -27,6 +27,7 @@
 				<JobsTab v-if="activeTab === 'jobs'" />
 				<RequisitionsTab v-if="activeTab === 'requisitions'" />
 				<ApprovalsTab v-if="activeTab === 'approvals'" />
+				<CmoApprovalsTab v-if="activeTab === 'cmo-approvals'" />
 				<CandidatesTab v-if="activeTab === 'candidates'" />
 				<InterviewsTab v-if="activeTab === 'interviews'" />
 				<TalentSearchTab v-if="activeTab === 'talent'" />
@@ -38,13 +39,14 @@
 import JobsTab from './JobsTab.vue';
 import RequisitionsTab from './RequisitionsTab.vue';
 import ApprovalsTab from './ApprovalsTab.vue';
+import CmoApprovalsTab from './CmoApprovalsTab.vue';
 import CandidatesTab from './CandidatesTab.vue';
 import InterviewsTab from './InterviewsTab.vue';
 import TalentSearchTab from './TalentSearchTab.vue';
 
 export default {
 	name: 'WorkforceHub',
-	components: { JobsTab, RequisitionsTab, ApprovalsTab, CandidatesTab, InterviewsTab, TalentSearchTab },
+	components: { JobsTab, RequisitionsTab, ApprovalsTab, CmoApprovalsTab, CandidatesTab, InterviewsTab, TalentSearchTab },
 
 	data() {
 		return {
@@ -52,16 +54,18 @@ export default {
 			userRoles: [],
 			// Tab visibility by role. 'System Manager' is added everywhere as an admin fallback.
 			// HR Manager  = WF HR Manager (Asha)         — full recruitment workspace
-			// Leadership  = WF Leadership (Priyesh)      — approvals + oversight of Jobs/Requisitions
-			// Hiring Mgr  = WF Hiring Manager (Sahil)    — raises + tracks his requisitions only
+			// Leadership  = WF Leadership (Priyesh)      — final approvals + oversight of Jobs/Requisitions
+			// CMO         = WF CMO (Samarth)             — first-stage approvals for his own team only
+			// Hiring Mgr  = WF Hiring Manager            — raises + tracks his requisitions only
 			// Recruiter   = WF Recruitment Coordinator   — works the pipeline: Jobs, Candidates, Interviews, Talent
 			allTabs: [
-				{ key: 'jobs',         label: 'Jobs',          icon: '📋', roles: ['System Manager', 'WF HR Manager', 'WF Leadership', 'WF Recruitment Coordinator'] },
-				{ key: 'requisitions', label: 'Requisitions',  icon: '📝', roles: ['System Manager', 'WF HR Manager', 'WF Leadership', 'WF Hiring Manager'] },
-				{ key: 'approvals',    label: 'Approvals',     icon: '✅', roles: ['System Manager', 'WF Leadership', 'WF CMO'] },
-				{ key: 'candidates',   label: 'Candidates',    icon: '👥', roles: ['System Manager', 'WF HR Manager', 'WF Recruitment Coordinator'] },
-				{ key: 'interviews',   label: 'Interviews',    icon: '🗓️', roles: ['System Manager', 'WF HR Manager', 'WF Recruitment Coordinator'] },
-				{ key: 'talent',       label: 'Talent Search', icon: '🔍', roles: ['System Manager', 'WF HR Manager', 'WF Recruitment Coordinator'] }
+				{ key: 'jobs',          label: 'Jobs',           icon: '📋', roles: ['System Manager', 'WF HR Manager', 'WF Leadership', 'WF Recruitment Coordinator'] },
+				{ key: 'requisitions',  label: 'Requisitions',   icon: '📝', roles: ['System Manager', 'WF HR Manager', 'WF Leadership', 'WF Hiring Manager'] },
+				{ key: 'approvals',     label: 'Approvals',      icon: '✅', roles: ['System Manager', 'WF Leadership'] },
+				{ key: 'cmo-approvals', label: 'CMO Approvals',  icon: '🛡️', roles: ['System Manager', 'WF CMO'] },
+				{ key: 'candidates',    label: 'Candidates',     icon: '👥', roles: ['System Manager', 'WF HR Manager', 'WF Recruitment Coordinator'] },
+				{ key: 'interviews',    label: 'Interviews',     icon: '🗓️', roles: ['System Manager', 'WF HR Manager', 'WF Recruitment Coordinator'] },
+				{ key: 'talent',        label: 'Talent Search',  icon: '🔍', roles: ['System Manager', 'WF HR Manager', 'WF Recruitment Coordinator'] }
 			]
 		};
 	},

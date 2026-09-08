@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+	<meta name="robots" content="noindex, nofollow">
+	<meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
+	<!-- Identifies the deployed bundle so an old tab can notice it is out of date. -->
+	<meta name="wfa-build" content="{{ wfa_build }}">
+	<title>Appraisal</title>
+	<link rel="preconnect" href="https://fonts.googleapis.com">
+	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+	<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+	<style>
+		html, body { margin: 0; background: #EEF1F3; }
+		body { font-family: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+		#appraisal-root:empty { min-height: 100vh; }
+	</style>
+	<script>
+		/* This page deliberately does not load frappe's web bundle: it renders a
+		   single self-contained app. The bundle's styles arrive through
+		   frappe.dom.set_style(), so provide that one function. */
+		window.frappe = window.frappe || {};
+		window.frappe.dom = window.frappe.dom || {};
+		if (!window.frappe.dom.set_style) {
+			window.frappe.dom.set_style = function (text, id) {
+				if (!text) return;
+				if (id && document.getElementById(id)) return;
+				var el = document.createElement('style');
+				if (id) el.id = id;
+				el.appendChild(document.createTextNode(text));
+				document.head.appendChild(el);
+				return el;
+			};
+		}
+	</script>
+	<!-- csrf_token -->
+</head>
+<body>
+	<div id="appraisal-root"></div>
+	<noscript>
+		<div style="max-width:440px;margin:60px auto;padding:24px;background:#fff;border:1px solid #DCE1E6;border-radius:14px">
+			<h2 style="margin:0 0 8px;font-weight:600">JavaScript is switched off</h2>
+			<p style="margin:0;color:#3E4C5A">The appraisal form needs JavaScript. Turn it on, or open this link in another browser.</p>
+		</div>
+	</noscript>
+	{{ include_script('appraisal.bundle.js') }}
+</body>
+</html>

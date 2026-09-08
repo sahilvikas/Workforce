@@ -1,0 +1,1165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Workforce Appraisal — interactive prototype</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/inter-ui/3.19.3/inter.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/vue/3.4.21/vue.global.prod.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+:root{
+  --chalk:#EEF1F3; --paper:#FFFFFF; --line:#DCE1E6; --line-2:#C3CBD3;
+  --ink:#0F1A24; --ink-2:#3E4C5A; --ink-3:#71808E;
+  --moss:#0F4C5C; --moss-2:#1E6B7E; --moss-tint:#DEEAEE; --moss-deep:#093642;
+  --marigold:#C98A1B; --marigold-tint:#FAEFD8;
+  --brick:#B3382C; --brick-tint:#F7E2DE;
+  --sky:#4A5FA8; --sky-tint:#E6E9F5;
+  --r-s:6px; --r-m:10px; --r-l:14px;
+  --sh:0 1px 2px rgba(27,36,48,.06), 0 6px 20px -12px rgba(27,36,48,.18);
+  --font:"Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --ease:cubic-bezier(.2,.7,.2,1);
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--chalk);color:var(--ink);font-family:var(--font);font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased}
+button,input,select,textarea{font:inherit;color:inherit}
+h1,h2,h3,h4{margin:0;font-weight:600;letter-spacing:-.01em}
+h1{font-size:28px;line-height:1.2}
+h2{font-size:20px;line-height:1.3}
+h3{font-size:16px}
+p{margin:0}
+a{color:var(--moss)}
+.muted{color:var(--ink-3)}
+.small{font-size:13px}
+.xs{font-size:12px}
+.mt-1{margin-top:6px}.mt-2{margin-top:12px}.mt-3{margin-top:20px}.mt-4{margin-top:32px}
+.row{display:flex;align-items:center;gap:10px}
+.between{justify-content:space-between}
+.wrap{flex-wrap:wrap}
+.grow{flex:1}
+.hide{display:none!important}
+@media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important}}
+
+/* ---------- prototype chrome ---------- */
+.proto-bar{position:sticky;top:0;z-index:50;background:var(--ink);color:#fff;padding:8px 16px;display:flex;align-items:center;gap:14px;font-size:13px}
+.proto-bar .brand{font-weight:600;letter-spacing:.01em}
+.proto-bar .brand span{color:#8FB3BE;font-weight:400}
+.seg{display:inline-flex;background:rgba(255,255,255,.08);border-radius:999px;padding:3px}
+.seg button{border:0;background:transparent;color:#C8CFD6;padding:5px 12px;border-radius:999px;cursor:pointer;transition:background .18s var(--ease),color .18s}
+.seg button.on{background:#fff;color:var(--ink)}
+.proto-note{margin-left:auto;color:#9AA3AD}
+.stage{min-height:calc(100vh - 40px);display:flex;justify-content:center;align-items:flex-start;padding:0}
+.stage.phone{padding:28px 0;background:#DFE4E8}
+.frame{width:100%;min-height:calc(100vh - 40px);transition:width .35s var(--ease)}
+.stage.phone .frame{width:392px;min-height:820px;height:820px;overflow:auto;border-radius:36px;border:10px solid #0F1A24;box-shadow:0 30px 60px -20px rgba(0,0,0,.4);background:var(--chalk);position:relative}
+.stage.phone .frame::-webkit-scrollbar{display:none}
+
+/* ---------- primitives ---------- */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:1px solid var(--line-2);background:var(--paper);border-radius:var(--r-m);padding:10px 16px;font-weight:500;cursor:pointer;transition:transform .12s var(--ease),background .15s,border-color .15s,box-shadow .15s;white-space:nowrap}
+.btn:hover{border-color:var(--ink-3)}
+.btn:active{transform:translateY(1px)}
+.btn:focus-visible{outline:2px solid var(--moss-2);outline-offset:2px}
+.btn.primary{background:var(--moss);border-color:var(--moss);color:#fff}
+.btn.primary:hover{background:var(--moss-deep);border-color:var(--moss-deep)}
+.btn.ghost{border-color:transparent;background:transparent}
+.btn.ghost:hover{background:rgba(27,36,48,.05)}
+.btn.danger{color:var(--brick);border-color:var(--brick)}
+.btn.sm{padding:6px 11px;font-size:13px;border-radius:var(--r-s)}
+.btn:disabled{opacity:.45;cursor:not-allowed;transform:none}
+.field{display:flex;flex-direction:column;gap:6px}
+.field label{font-size:13px;font-weight:500;color:var(--ink-2)}
+.field .hint{font-size:12px;color:var(--ink-3)}
+.input,textarea.input,select.input{width:100%;border:1px solid var(--line-2);background:var(--paper);border-radius:var(--r-m);padding:10px 12px;transition:border-color .15s,box-shadow .15s}
+.input:focus{outline:none;border-color:var(--moss-2);box-shadow:0 0 0 3px rgba(46,107,79,.15)}
+textarea.input{min-height:88px;resize:vertical;line-height:1.5}
+.input.err{border-color:var(--brick);box-shadow:0 0 0 3px rgba(185,72,60,.12)}
+.err-text{color:var(--brick);font-size:12px}
+.counter{font-size:11px;color:var(--ink-3);text-align:right;margin-top:-2px}
+.counter.ok{color:var(--moss)}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:var(--r-l);padding:20px}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:999px;font-size:12px;font-weight:500;background:var(--chalk);color:var(--ink-2);border:1px solid var(--line)}
+.chip.moss{background:var(--moss-tint);color:var(--moss-deep);border-color:transparent}
+.chip.gold{background:var(--marigold-tint);color:#7A5410;border-color:transparent}
+.chip.brick{background:var(--brick-tint);color:var(--brick);border-color:transparent}
+.chip.sky{background:var(--sky-tint);color:#2B5583;border-color:transparent}
+.chip.ink{background:var(--ink);color:#fff;border-color:transparent}
+.dot{width:7px;height:7px;border-radius:50%;background:currentColor;display:inline-block}
+.toast-wrap{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);z-index:80;display:flex;flex-direction:column;gap:8px;align-items:center}
+.toast{background:var(--ink);color:#fff;padding:10px 16px;border-radius:999px;font-size:13px;box-shadow:var(--sh);animation:toastin .25s var(--ease)}
+@keyframes toastin{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.modal-bg{position:fixed;inset:0;background:rgba(27,36,48,.45);z-index:70;display:flex;align-items:center;justify-content:center;padding:20px;animation:fade .2s}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+.modal{background:var(--paper);border-radius:var(--r-l);width:100%;max-width:560px;padding:24px;box-shadow:0 40px 80px -30px rgba(0,0,0,.4);animation:pop .22s var(--ease)}
+@keyframes pop{from{opacity:0;transform:translateY(10px) scale(.98)}to{opacity:1;transform:none}}
+.table{width:100%;border-collapse:collapse;font-size:14px}
+.table th{text-align:left;font-weight:500;color:var(--ink-3);font-size:12px;padding:8px 12px;border-bottom:1px solid var(--line)}
+.table td{padding:11px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+.table tr:last-child td{border-bottom:0}
+.table tr.click{cursor:pointer}
+.table tr.click:hover td{background:#F6F8F9}
+.skel{background:linear-gradient(90deg,#E8ECEF 25%,#F4F6F7 50%,#E8ECEF 75%);background-size:200% 100%;animation:shimmer 1.2s infinite;border-radius:6px;height:14px}
+@keyframes shimmer{from{background-position:200% 0}to{background-position:-200% 0}}
+
+/* ---------- rating scale (signature) ---------- */
+.rating{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
+.rating button{border:1px solid var(--line-2);background:var(--paper);border-radius:var(--r-m);padding:10px 4px 8px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;transition:all .18s var(--ease);position:relative;overflow:hidden}
+.rating button .n{font-size:18px;font-weight:600;line-height:1}
+.rating button .w{font-size:10.5px;color:var(--ink-3);line-height:1.1;text-align:center}
+.rating button:hover{border-color:var(--moss-2);transform:translateY(-1px)}
+.rating button.on{border-color:var(--moss);background:var(--moss);color:#fff}
+.rating button.on .w{color:rgba(255,255,255,.8)}
+.rating button.on.r1{background:#B85C38;border-color:#B85C38}
+.rating button.on.r2{background:#9C6A3C;border-color:#9C6A3C}
+.rating button.on.r3{background:#5E6F5C;border-color:#5E6F5C}
+.rating button.on.r4{background:var(--moss);border-color:var(--moss)}
+.rating button.on.r5{background:var(--moss-deep);border-color:var(--moss-deep)}
+.rating.compact button{padding:7px 2px 6px}
+.rating.compact button .w{display:none}
+.rating.readonly button{cursor:default}
+.rating.readonly button:hover{transform:none;border-color:var(--line-2)}
+
+/* ---------- employee app ---------- */
+.emp{min-height:100%;display:flex;flex-direction:column}
+.emp-top{display:flex;align-items:center;justify-content:space-between;padding:14px 22px;border-bottom:1px solid var(--line);background:var(--paper)}
+.wordmark{display:flex;align-items:center;gap:10px;font-weight:600}
+.wordmark i{width:26px;height:26px;border-radius:8px;background:var(--moss);display:inline-block;position:relative}
+.wordmark i::after{content:"";position:absolute;inset:7px 7px 7px 7px;border-radius:3px;background:#fff;clip-path:polygon(0 60%,45% 100%,100% 0,100% 30%,45% 100%,0 80%)}
+.saved{font-size:12px;color:var(--ink-3);display:flex;align-items:center;gap:6px;min-height:18px}
+.saved .dot{background:var(--moss-2)}
+.saved.saving .dot{animation:pulse 1s infinite}
+@keyframes pulse{50%{opacity:.3}}
+.login{max-width:440px;margin:60px auto;padding:0 20px;width:100%}
+.login .card{padding:28px}
+.welcome{max-width:720px;margin:0 auto;padding:48px 24px;width:100%}
+.welcome h1{font-size:34px;line-height:1.15;letter-spacing:-.02em;margin-bottom:14px}
+.welcome .lede{font-size:17px;color:var(--ink-2);max-width:560px}
+.facts{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:28px}
+.facts .card{padding:16px}
+.facts .card b{display:block;font-size:22px;font-weight:600;letter-spacing:-.01em}
+.facts .card span{font-size:13px;color:var(--ink-3)}
+.wizard{display:grid;grid-template-columns:260px 1fr;flex:1;min-height:0}
+.rail{border-right:1px solid var(--line);padding:26px 18px;background:var(--paper);position:sticky;top:0;align-self:start;height:calc(100vh - 40px - 57px);overflow:auto}
+.rail .cycle{font-size:12px;color:var(--ink-3);margin-bottom:18px;padding:0 6px}
+.rail ol{list-style:none;margin:0;padding:0;position:relative}
+.rail ol::before{content:"";position:absolute;left:15px;top:14px;bottom:14px;width:2px;background:var(--line)}
+.rail li{position:relative;display:flex;align-items:center;gap:12px;padding:7px 6px;border-radius:8px;font-size:13.5px;color:var(--ink-3);cursor:pointer}
+.rail li .mk{width:20px;height:20px;border-radius:50%;background:var(--paper);border:2px solid var(--line-2);display:grid;place-items:center;font-size:10px;font-weight:600;position:relative;z-index:1;transition:all .2s}
+.rail li.done{color:var(--ink-2)}
+.rail li.done .mk{background:var(--moss);border-color:var(--moss);color:#fff}
+.rail li.cur{color:var(--ink);font-weight:500;background:var(--moss-tint)}
+.rail li.cur .mk{border-color:var(--moss);color:var(--moss)}
+.rail li .opt{margin-left:auto;font-size:11px;color:var(--ink-3)}
+.rail .score{margin-top:22px;padding:14px;border-radius:var(--r-m);background:var(--chalk)}
+.rail .score b{font-size:26px;font-weight:600;letter-spacing:-.02em}
+.rail .score .bar{height:6px;background:var(--line);border-radius:3px;overflow:hidden;margin-top:8px}
+.rail .score .bar i{display:block;height:100%;background:var(--moss);transition:width .5s var(--ease)}
+.pane{display:flex;flex-direction:column;min-width:0}
+.pane-scroll{flex:1;padding:36px 44px 120px;max-width:820px;width:100%}
+.stephead{margin-bottom:22px}
+.stephead .k{font-size:13px;color:var(--ink-3);margin-bottom:6px}
+.stephead h2{font-size:24px;letter-spacing:-.015em}
+.stephead p{color:var(--ink-2);margin-top:6px;max-width:600px}
+.footbar{position:sticky;bottom:0;background:rgba(255,255,255,.92);backdrop-filter:blur(8px);border-top:1px solid var(--line);padding:12px 44px;display:flex;align-items:center;gap:12px;justify-content:space-between}
+.mobile-prog{display:none}
+.kra{border:1px solid var(--line);border-radius:var(--r-l);background:var(--paper);margin-bottom:16px;overflow:hidden;transition:box-shadow .2s}
+.kra:focus-within{box-shadow:0 0 0 3px rgba(46,107,79,.12)}
+.kra .def{padding:16px 18px;background:#F6F8F9;border-bottom:1px solid var(--line)}
+.kra .def h3{display:flex;align-items:center;gap:10px;font-size:15.5px}
+.kra .def .w{margin-left:auto;font-size:12px;font-weight:600;color:var(--moss-deep);background:var(--moss-tint);padding:3px 8px;border-radius:999px}
+.kra .def dl{display:grid;grid-template-columns:110px 1fr;gap:4px 12px;margin:10px 0 0;font-size:13.5px}
+.kra .def dt{color:var(--ink-3)}
+.kra .def dd{margin:0;color:var(--ink-2)}
+.kra .ans{padding:16px 18px;display:grid;gap:14px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}
+.rows{display:grid;gap:12px}
+.rowcard{border:1px solid var(--line);border-radius:var(--r-m);padding:14px;background:var(--paper);display:grid;gap:10px}
+.rowcard .idx{font-size:12px;color:var(--ink-3);font-weight:500}
+.summary dl{display:grid;grid-template-columns:200px 1fr;gap:8px 16px;font-size:14px}
+.summary dt{color:var(--ink-3)}
+.summary dd{margin:0}
+.sec{border-top:1px solid var(--line);padding-top:16px;margin-top:16px}
+.sec-h{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.sec-h h3{font-size:15px}
+.edit{font-size:13px;color:var(--moss);cursor:pointer;background:none;border:0;padding:0}
+.done-wrap{max-width:560px;margin:70px auto;text-align:center;padding:0 20px}
+.tick{width:72px;height:72px;border-radius:50%;background:var(--moss);margin:0 auto 22px;display:grid;place-items:center;animation:pop .4s var(--ease)}
+.tick svg{width:34px;height:34px;stroke:#fff;stroke-width:3;fill:none;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:40;stroke-dashoffset:40;animation:draw .5s .2s var(--ease) forwards}
+@keyframes draw{to{stroke-dashoffset:0}}
+.slide-enter-active,.slide-leave-active{transition:all .26s var(--ease)}
+.slide-enter-from{opacity:0;transform:translateX(18px)}
+.slide-leave-to{opacity:0;transform:translateX(-18px)}
+.slide-leave-active{position:absolute;width:100%}
+.slideback-enter-from{opacity:0;transform:translateX(-18px)}
+.slideback-leave-to{opacity:0;transform:translateX(18px)}
+.slideback-enter-active,.slideback-leave-active{transition:all .26s var(--ease)}
+.slideback-leave-active{position:absolute;width:100%}
+.stepwrap{position:relative}
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line)}
+.tabs button{border:0;background:none;padding:10px 14px;cursor:pointer;color:var(--ink-3);border-bottom:2px solid transparent;margin-bottom:-1px;font-weight:500}
+.tabs button.on{color:var(--ink);border-color:var(--moss)}
+
+/* ---------- manager ---------- */
+.mgr{max-width:1100px;margin:0 auto;padding:28px 24px;width:100%}
+.review{display:grid;grid-template-columns:1fr 1fr;gap:0;border:1px solid var(--line);border-radius:var(--r-l);overflow:hidden;background:var(--paper)}
+.review .side{padding:18px}
+.review .side.left{background:#F6F8F9;border-right:1px solid var(--line)}
+.review .side h4{font-size:12.5px;color:var(--ink-3);font-weight:500;margin-bottom:10px}
+.review .q{font-size:13.5px;color:var(--ink-2);white-space:pre-wrap}
+.rowhead{padding:12px 18px;background:var(--paper);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;font-weight:600}
+.rowhead .w{margin-left:auto;font-size:12px;font-weight:600;color:var(--moss-deep);background:var(--moss-tint);padding:3px 8px;border-radius:999px}
+.reviewblock{margin-bottom:18px}
+.compare{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:13px;align-items:center}
+.compare .lbl{color:var(--ink-3)}
+.team-card{display:flex;align-items:center;gap:14px;padding:14px 16px;border:1px solid var(--line);border-radius:var(--r-m);background:var(--paper);cursor:pointer;transition:border-color .15s,transform .12s}
+.team-card:hover{border-color:var(--ink-3)}
+.avatar{width:38px;height:38px;border-radius:50%;background:var(--moss-tint);color:var(--moss-deep);display:grid;place-items:center;font-weight:600;font-size:13px;flex:none}
+.avatar.gold{background:var(--marigold-tint);color:#7A5410}
+.avatar.ink{background:var(--ink);color:#fff}
+
+/* ---------- HR console ---------- */
+.hr{display:grid;grid-template-columns:220px 1fr;min-height:calc(100vh - 40px)}
+.hr-nav{background:var(--paper);border-right:1px solid var(--line);padding:18px 12px;position:sticky;top:52px;height:calc(100vh - 52px);overflow:auto}
+.hr-nav .wordmark{padding:6px 10px 18px}
+.hr-nav button{display:flex;align-items:center;gap:10px;width:100%;border:0;background:none;text-align:left;padding:9px 10px;border-radius:8px;cursor:pointer;color:var(--ink-2);font-weight:500;font-size:14px}
+.hr-nav button:hover{background:var(--chalk)}
+.hr-nav button.on{background:var(--moss-tint);color:var(--moss-deep)}
+.hr-nav button .cnt{margin-left:auto;font-size:11px;background:var(--chalk);padding:1px 7px;border-radius:999px;color:var(--ink-3)}
+.hr-nav button.on .cnt{background:#fff}
+.hr-main{padding:28px 32px 60px;min-width:0}
+.hr-main .head{display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:22px;gap:16px;flex-wrap:wrap}
+.hr-main .head p{color:var(--ink-3);margin-top:4px}
+.kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:22px}
+.kpi{background:var(--paper);border:1px solid var(--line);border-radius:var(--r-m);padding:14px 16px}
+.kpi b{display:block;font-size:26px;font-weight:600;letter-spacing:-.02em;line-height:1.1}
+.kpi span{font-size:12.5px;color:var(--ink-3)}
+.kpi .trend{font-size:12px;color:var(--moss);margin-top:4px}
+.matrix{width:100%;border-collapse:separate;border-spacing:3px;font-size:13px}
+.matrix th{font-weight:500;color:var(--ink-3);font-size:12px;text-align:center;padding:6px 4px}
+.matrix th:first-child{text-align:left}
+.matrix td{text-align:center;padding:10px 6px;border-radius:6px;background:var(--chalk);cursor:pointer;transition:transform .12s}
+.matrix td:first-child{text-align:left;background:none;font-weight:500;cursor:default}
+.matrix td.h1{background:#DEEAEE}.matrix td.h2{background:#BDD5DD}.matrix td.h3{background:#93BCC8;color:var(--moss-deep)}.matrix td.h4{background:var(--moss);color:#fff}
+.matrix td.h0{color:var(--ink-3)}
+.matrix td:not(:first-child):hover{transform:scale(1.04)}
+.two{display:grid;grid-template-columns:1.4fr 1fr;gap:16px}
+.drawer-bg{position:fixed;left:0;right:0;bottom:0;top:52px;background:rgba(27,36,48,.25);z-index:60;animation:fade .2s}
+.drawer{position:fixed;top:52px;right:0;bottom:0;width:min(560px,100%);background:var(--paper);z-index:61;box-shadow:-20px 0 60px -30px rgba(0,0,0,.4);padding:24px 26px;overflow:auto;animation:slidein .28s var(--ease)}
+@keyframes slidein{from{transform:translateX(30px);opacity:0}to{transform:none;opacity:1}}
+.stages{display:grid;gap:0;position:relative;margin:14px 0}
+.stages .s{display:flex;gap:12px;align-items:flex-start;padding:8px 0;position:relative}
+.stages .s .mk{width:22px;height:22px;border-radius:50%;border:2px solid var(--line-2);background:var(--paper);display:grid;place-items:center;font-size:10px;flex:none;z-index:1}
+.stages .s.done .mk{background:var(--moss);border-color:var(--moss);color:#fff}
+.stages .s.cur .mk{border-color:var(--marigold);background:var(--marigold-tint)}
+.stages .s .t{font-size:13.5px}
+.stages .s .d{font-size:12px;color:var(--ink-3)}
+.stages::before{content:"";position:absolute;left:10px;top:18px;bottom:18px;width:2px;background:var(--line)}
+.weightbar{height:10px;border-radius:5px;background:var(--line);overflow:hidden;display:flex}
+.weightbar i{display:block;height:100%;transition:width .3s var(--ease)}
+.tpl-row{display:grid;grid-template-columns:32px 2fr 90px 2fr 2.4fr 32px;gap:10px;align-items:start;padding:10px 0;border-bottom:1px solid var(--line)}
+.tpl-row .input{padding:8px 10px;font-size:13.5px}
+.tpl-row textarea.input{min-height:82px}
+.tpl-row .idx{padding-top:9px;color:var(--ink-3);font-size:13px}
+.x{border:0;background:none;color:var(--ink-3);cursor:pointer;font-size:18px;padding:6px 4px;line-height:1}
+.x:hover{color:var(--brick)}
+.filters{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+.filters .input{width:auto;min-width:160px;padding:8px 10px}
+.mailprev{border:1px solid var(--line);border-radius:var(--r-m);background:#F6F8F9;padding:18px;font-size:13.5px}
+.mailprev .from{color:var(--ink-3);font-size:12px;border-bottom:1px solid var(--line);padding-bottom:8px;margin-bottom:12px}
+.pw{font-family:ui-monospace,Menlo,monospace;background:var(--paper);border:1px dashed var(--line-2);padding:8px 12px;border-radius:6px;display:inline-block;letter-spacing:.12em;font-size:15px}
+.check{display:flex;align-items:center;gap:10px;cursor:pointer;font-size:14px}
+.check input{width:18px;height:18px;accent-color:var(--moss)}
+.toggle{width:40px;height:22px;border-radius:11px;background:var(--line-2);position:relative;cursor:pointer;transition:background .2s;border:0;flex:none}
+.toggle::after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;transition:left .2s var(--ease)}
+.toggle.on{background:var(--moss)}
+.toggle.on::after{left:21px}
+.list-tpl{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px}
+.tplcard{border:1px solid var(--line);border-radius:var(--r-m);background:var(--paper);padding:16px;cursor:pointer;transition:border-color .15s}
+.tplcard:hover{border-color:var(--ink-3)}
+.tplcard.on{border-color:var(--moss);box-shadow:0 0 0 2px var(--moss-tint)}
+.tplcard h4{font-size:15px}
+.tplcard .meta{font-size:12.5px;color:var(--ink-3);margin-top:6px}
+.tplcard.new{border-style:dashed;display:grid;place-items:center;color:var(--ink-3);min-height:110px}
+
+/* ---------- responsive ---------- */
+.stage.phone .wizard,@media (max-width:820px){}
+@media (max-width:820px){
+  .wizard{grid-template-columns:1fr}
+  .rail{display:none}
+  .mobile-prog{display:block;padding:12px 18px 0}
+  .pane-scroll{padding:22px 18px 110px}
+  .footbar{padding:12px 18px}
+  .grid2,.grid3{grid-template-columns:1fr}
+  .facts{grid-template-columns:1fr}
+  .review{grid-template-columns:1fr}
+  .review .side.left{border-right:0;border-bottom:1px solid var(--line)}
+  .hr{grid-template-columns:1fr}
+  .hr-nav{position:static;height:auto;display:flex;overflow-x:auto;gap:4px;padding:8px}
+  .hr-nav .wordmark{display:none}
+  .hr-nav button{width:auto;white-space:nowrap}
+  .hr-nav button .cnt{display:none}
+  .hr-main{padding:18px}
+  .kpis{grid-template-columns:repeat(2,1fr)}
+  .two{grid-template-columns:1fr}
+  .tpl-row{grid-template-columns:1fr;gap:6px}
+  .tpl-row .idx{display:none}
+  .kra .def dl{grid-template-columns:1fr}
+  .summary dl{grid-template-columns:1fr}
+}
+/* phone frame forces mobile layout regardless of viewport */
+.stage.phone .wizard{grid-template-columns:1fr}
+.stage.phone .rail{display:none}
+.stage.phone .mobile-prog{display:block;padding:12px 18px 0}
+.stage.phone .pane-scroll{padding:22px 18px 110px}
+.stage.phone .footbar{padding:12px 18px}
+.stage.phone .grid2,.stage.phone .grid3{grid-template-columns:1fr}
+.stage.phone .facts{grid-template-columns:1fr}
+.stage.phone .review{grid-template-columns:1fr}
+.stage.phone .review .side.left{border-right:0;border-bottom:1px solid var(--line)}
+.stage.phone .hr{grid-template-columns:1fr}
+.stage.phone .hr-nav{position:static;height:auto;display:flex;overflow-x:auto;gap:4px;padding:8px}
+.stage.phone .hr-nav .wordmark{display:none}
+.stage.phone .hr-nav button{width:auto;white-space:nowrap}
+.stage.phone .hr-nav button .cnt{display:none}
+.stage.phone .hr-main{padding:18px}
+.stage.phone .kpis{grid-template-columns:repeat(2,1fr)}
+.stage.phone .two{grid-template-columns:1fr}
+.stage.phone .tpl-row{grid-template-columns:1fr;gap:6px}
+.stage.phone .tpl-row .idx{display:none}
+.stage.phone .kra .def dl{grid-template-columns:1fr}
+.stage.phone .summary dl{grid-template-columns:1fr}
+.stage.phone .welcome h1{font-size:28px}
+.stage.phone .rating button .w{font-size:9.5px}
+.stage.phone .drawer{top:0;width:100%}
+.stage.phone .emp-top{padding:12px 16px}
+.stage.phone .brandlong{display:none}
+@media (max-width:820px){.brandlong{display:none}}
+.stage.phone .login{margin:30px auto}
+.mob-bar{height:4px;background:var(--line);border-radius:2px;overflow:hidden;margin-top:8px}
+.mob-bar i{display:block;height:100%;background:var(--moss);transition:width .4s var(--ease)}
+</style>
+</head>
+<body>
+<div id="app">
+<!-- prototype chrome -->
+<div class="proto-bar">
+  <div class="brand">Workforce Appraisal <span>— interactive prototype</span></div>
+  <div class="seg">
+    <button :class="{on:persona==='employee'}" @click="setPersona('employee')">Employee</button>
+    <button :class="{on:persona==='manager'}" @click="setPersona('manager')">Manager</button>
+    <button :class="{on:persona==='hr'}" @click="setPersona('hr')">HR</button>
+  </div>
+  <div class="seg">
+    <button :class="{on:device==='desktop'}" @click="device='desktop'">Laptop</button>
+    <button :class="{on:device==='phone'}" @click="device='phone'">Phone</button>
+  </div>
+  <div class="proto-note">{{ protoNote }}</div>
+</div>
+
+<div class="stage" :class="device">
+<div class="frame">
+
+<!-- ================= EMPLOYEE / MANAGER (token door) ================= -->
+<div class="emp" v-if="persona!=='hr'">
+  <div class="emp-top">
+    <div class="wordmark"><i></i><span class="brandlong">Cozy Corner Patios ·&nbsp;</span>Appraisal</div>
+    <div class="row">
+      <div class="saved" :class="{saving:saving}" v-if="emp.screen==='wizard'"><span class="dot"></span>{{ saving?'Saving…':('Saved · '+savedAgo) }}</div>
+      <span class="chip" v-if="emp.screen!=='login'">{{ me.name }}</span>
+    </div>
+  </div>
+
+  <!-- LOGIN -->
+  <div class="login" v-if="emp.screen==='login'">
+    <div class="card">
+      <h2>{{ cycle.name }}</h2>
+      <p class="muted mt-1">HR sent this link to <b>{{ me.email }}</b>. Enter the password from the same email to open your appraisal.</p>
+      <div class="field mt-3">
+        <label>Password</label>
+        <input class="input" :class="{err:emp.loginErr}" type="text" v-model="emp.pw" placeholder="8 characters, e.g. K7M3-QX2P" @keyup.enter="login">
+        <div class="err-text" v-if="emp.loginErr">{{ emp.loginErr }}</div>
+        <div class="hint" v-else>Prototype: any 4+ characters works. Try a wrong one first to see the lockout counter.</div>
+      </div>
+      <button class="btn primary mt-3" style="width:100%" @click="login">Open my appraisal</button>
+      <p class="xs muted mt-3">The link works until the cycle closes. If you lose the password, ask HR to resend it — nobody else can open this page with your link alone.</p>
+    </div>
+  </div>
+
+  <!-- WELCOME -->
+  <div class="welcome" v-else-if="emp.screen==='welcome'">
+    <span class="chip moss">{{ cycle.name }}</span>
+    <h1 class="mt-2">{{ emp.resume ? 'Welcome back, '+firstName+'.' : 'Hello '+firstName+', this is your self-appraisal.' }}</h1>
+    <p class="lede">{{ emp.resume ? 'You were on “'+steps[emp.step].label+'”. Everything you typed is saved.' : 'Thirteen short sections about the year: what you were asked to deliver, what you achieved, and where you want to go next. Your manager reads it before writing their review.' }}</p>
+    <div class="facts">
+      <div class="card"><b>~35 min</b><span>Most people finish in one sitting. You don’t have to.</span></div>
+      <div class="card"><b>Auto-saved</b><span>Every answer saves as you type. Close the tab any time.</span></div>
+      <div class="card"><b>{{ cycle.selfEnd }}</b><span>Submit by this date. HR will remind you.</span></div>
+    </div>
+    <div class="row mt-4 wrap">
+      <button class="btn primary" @click="emp.screen='wizard'">{{ emp.resume ? 'Continue where I left off' : 'Start' }}</button>
+      <button class="btn ghost" v-if="emp.resume" @click="emp.step=0;emp.screen='wizard'">Start from the beginning</button>
+    </div>
+  </div>
+
+  <!-- MANAGER HOME (manager persona) -->
+  <div class="mgr" v-else-if="emp.screen==='mgr'">
+    <div class="tabs">
+      <button :class="{on:mgr.tab==='team'}" @click="mgr.tab='team'">My team</button>
+      <button :class="{on:mgr.tab==='mine'}" @click="mgr.tab='mine'">My own appraisal</button>
+    </div>
+    <div v-if="mgr.tab==='team' && !mgr.open" class="mt-3">
+      <div class="row between wrap">
+        <div><h2>Reviews waiting for you</h2><p class="muted small">{{ teamPending.length }} of {{ team.length }} submitted and waiting · window closes {{ cycle.mgrEnd }}</p></div>
+      </div>
+      <div class="rows mt-3">
+        <div class="team-card" v-for="t in team" :key="t.id" @click="openReview(t)">
+          <div class="avatar" :class="{gold:t.status==='In Progress',ink:t.status==='Manager Submitted'}">{{ initials(t.name) }}</div>
+          <div class="grow"><b>{{ t.name }}</b><div class="small muted">{{ t.designation }} · {{ t.dept }}</div></div>
+          <span class="chip" :class="statusChip(t.status)"><span class="dot"></span>{{ t.status }}</span>
+          <span class="small muted" v-if="t.submittedOn">{{ t.submittedOn }}</span>
+        </div>
+      </div>
+      <p class="xs muted mt-3">People who haven’t submitted yet can’t be reviewed. HR sends them reminders; you can also just ask.</p>
+    </div>
+
+    <!-- REVIEW PANEL -->
+    <div v-if="mgr.tab==='team' && mgr.open" class="mt-3">
+      <button class="btn ghost sm" @click="mgr.open=null">← Back to team</button>
+      <div class="row between mt-2 wrap">
+        <div><h2>{{ mgr.open.name }}</h2><p class="muted small">{{ mgr.open.designation }} · submitted {{ mgr.open.submittedOn }} · self score <b>{{ selfScore.toFixed(2) }}</b> / 5</p></div>
+        <div class="row"><span class="chip" :class="mgrDone? 'moss':'gold'">{{ mgrDone ? 'Review complete' : mgrProgress+' of '+mgrTotal+' rated' }}</span></div>
+      </div>
+
+      <template v-for="(k,i) in form.kras" :key="'mk'+i">
+        <div class="review mt-3">
+          <div class="rowhead" style="grid-column:1/-1">{{ i+1 }}. {{ k.kra }}<span class="w">{{ k.weightage }}%</span></div>
+          <div class="side left">
+            <h4>What {{ firstOf(mgr.open.name) }} wrote</h4>
+            <div class="compare"><span class="lbl">Target</span><span>{{ k.target }}</span></div>
+            <div class="mt-2 small muted">Actual result</div><div class="q">{{ k.actual || '—' }}</div>
+            <div class="mt-2 small muted">Evidence</div><div class="q">{{ k.evidence || '—' }}</div>
+            <div class="mt-2 row"><span class="small muted">Self rating</span><span class="chip moss">{{ k.self || '–' }} · {{ ratingWord(k.self) }}</span></div>
+          </div>
+          <div class="side">
+            <h4>Your rating</h4>
+            <div class="rating compact"><button v-for="n in 5" :key="n" :class="['r'+n,{on:k.mgr===n}]" @click="k.mgr=n;touch()"><span class="n">{{ n }}</span></button></div>
+            <div class="row between mt-1"><span class="xs muted">{{ ratingWord(k.mgr) || 'Pick a rating' }}</span><span class="xs" :class="k.mgr && k.self && Math.abs(k.mgr-k.self)>=2 ? 'err-text':'muted'" v-if="k.mgr">{{ gapText(k) }}</span></div>
+            <div class="field mt-2"><textarea class="input" v-model="k.mgrComment" placeholder="Why this rating? Point at the evidence." @input="touch"></textarea></div>
+          </div>
+        </div>
+      </template>
+
+      <h3 class="mt-4">Behaviour & competencies</h3>
+      <template v-for="(c,i) in applicableComps" :key="'mc'+i">
+        <div class="review mt-2">
+          <div class="rowhead" style="grid-column:1/-1">{{ c.competency }} · {{ c.kraLabel }}<span class="w">{{ c.weightage }}%</span></div>
+          <div class="side left"><div class="q">{{ c.evidence || '—' }}</div><div class="mt-2 row"><span class="small muted">Self</span><span class="chip moss">{{ c.self||'–' }}</span></div></div>
+          <div class="side"><div class="rating compact"><button v-for="n in 5" :key="n" :class="['r'+n,{on:c.mgr===n}]" @click="c.mgr=n;touch()"><span class="n">{{ n }}</span></button></div><textarea class="input mt-2" v-model="c.mgrComment" placeholder="Comment" @input="touch"></textarea></div>
+        </div>
+      </template>
+
+      <div class="card mt-4">
+        <h3>Overall</h3>
+        <div class="grid2 mt-2">
+          <div class="field"><label>Your overall rating</label><div class="rating"><button v-for="n in 5" :key="n" :class="['r'+n,{on:mgr.overall===n}]" @click="mgr.overall=n"><span class="n">{{ n }}</span><span class="w">{{ ratingWord(n) }}</span></button></div></div>
+          <div class="field"><label>Weighted from your ratings</label><div class="row"><b style="font-size:30px;letter-spacing:-.02em">{{ mgrScore.toFixed(2) }}</b><span class="muted">/ 5 &nbsp;·&nbsp; employee’s own: {{ selfScore.toFixed(2) }}</span></div><div class="hint">Calculated live from the KRA and competency ratings above. Your overall rating can differ — HR sees both.</div></div>
+        </div>
+        <div class="grid2 mt-3">
+          <div class="field"><label>Key feedback</label><textarea class="input" v-model="mgr.feedback" placeholder="What went well, what didn’t, in plain words. The employee reads this after calibration."></textarea><div class="counter" :class="{ok:mgr.feedback.length>=30}">{{ mgr.feedback.length }} / 30 min</div></div>
+          <div class="field"><label>Development recommendations</label><textarea class="input" v-model="mgr.recs" placeholder="Specific skills, exposure or responsibility to add next cycle."></textarea><div class="counter" :class="{ok:mgr.recs.length>=30}">{{ mgr.recs.length }} / 30 min</div></div>
+        </div>
+        <div class="row between mt-3 wrap">
+          <span class="small muted">Saved automatically. You can leave and come back.</span>
+          <button class="btn primary" :disabled="!mgrCanSubmit" @click="submitReview">Submit review to HR</button>
+        </div>
+        <p class="xs muted mt-2" v-if="!mgrCanSubmit">Rate every KRA and competency, give an overall rating, and write at least 30 characters in both boxes to submit.</p>
+      </div>
+    </div>
+
+    <div v-if="mgr.tab==='mine'" class="mt-3">
+      <div class="card row between wrap">
+        <div><b>Your own self-appraisal</b><div class="small muted">Status: In Progress · your reviewer is {{ cycle.ceo }} (CEO)</div></div>
+        <button class="btn primary" @click="persona='employee';emp.screen='welcome';emp.resume=true">Open</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- DONE -->
+  <div class="done-wrap" v-else-if="emp.screen==='done'">
+    <div class="tick"><svg viewBox="0 0 24 24"><path d="M4 12.5l5 5L20 6.5"/></svg></div>
+    <h1>Submitted. Thank you, {{ firstName }}.</h1>
+    <p class="muted mt-2">Your self-appraisal went to <b>{{ me.manager }}</b> at {{ nowStr }}. A copy is on its way to {{ me.email }}.</p>
+    <div class="card mt-4" style="text-align:left">
+      <h3>What happens next</h3>
+      <div class="stages mt-2">
+        <div class="s done"><div class="mk">✓</div><div><div class="t">Self-appraisal submitted</div><div class="d">Today</div></div></div>
+        <div class="s cur"><div class="mk"></div><div><div class="t">Manager review</div><div class="d">{{ cycle.mgrStart }} – {{ cycle.mgrEnd }}</div></div></div>
+        <div class="s"><div class="mk"></div><div><div class="t">HR calibration & final approval</div><div class="d">{{ cycle.calStart }} – {{ cycle.faEnd }}</div></div></div>
+        <div class="s"><div class="mk"></div><div><div class="t">Discussion with your manager</div><div class="d">{{ cycle.discStart }} – {{ cycle.discEnd }}</div></div></div>
+      </div>
+    </div>
+    <div class="row mt-3" style="justify-content:center;gap:10px;flex-wrap:wrap">
+      <button class="btn" @click="showToast('Print view would open here — browser “Save as PDF”')">Download a copy</button>
+      <button class="btn ghost" @click="resetEmployee">Prototype: reset</button>
+    </div>
+  </div>
+
+  <!-- WIZARD -->
+  <div class="wizard" v-else-if="emp.screen==='wizard'">
+    <aside class="rail">
+      <div class="cycle">{{ cycle.name }}<br>{{ me.name }} · {{ me.id }}</div>
+      <ol>
+        <li v-for="(s,i) in steps" :key="s.key" :class="{done:emp.step>i && stepValid(i), cur:i===emp.step}" @click="go(i)">
+          <span class="mk">{{ emp.step>i && stepValid(i) ? "✓" : i+1 }}</span>{{ s.label }}<span class="opt" v-if="s.optional">optional</span>
+        </li>
+      </ol>
+      <div class="score">
+        <div class="xs muted">Weighted self score so far</div>
+        <b>{{ selfScore ? selfScore.toFixed(2) : '–' }}</b><span class="muted small"> / 5</span>
+        <div class="bar"><i :style="{width:(selfScore/5*100)+'%'}"></i></div>
+        <div class="xs muted mt-1">{{ ratedCount }} of {{ rateableCount }} ratings given</div>
+      </div>
+    </aside>
+
+    <section class="pane">
+      <div class="mobile-prog">
+        <div class="row between small"><b>{{ steps[emp.step].label }}</b><span class="muted">Step {{ emp.step+1 }} of {{ steps.length }}</span></div>
+        <div class="mob-bar"><i :style="{width:((emp.step+1)/steps.length*100)+'%'}"></i></div>
+      </div>
+      <div class="pane-scroll stepwrap">
+      <transition :name="dir" mode="out-in">
+      <div :key="emp.step">
+
+        <!-- 0 details -->
+        <div v-if="cur==='details'">
+          <div class="stephead"><div class="k">Section 1</div><h2>Your details</h2><p>HR filled these in. Check they’re right — the whole appraisal is filed against them.</p></div>
+          <div class="card summary">
+            <dl>
+              <dt>Employee name</dt><dd>{{ me.name }}</dd>
+              <dt>Employee ID</dt><dd>{{ me.id }}</dd>
+              <dt>Department</dt><dd>{{ me.dept }}</dd>
+              <dt>Designation</dt><dd>{{ me.designation }}</dd>
+              <dt>Date of joining</dt><dd>{{ me.doj }}</dd>
+              <dt>Reporting manager</dt><dd>{{ me.manager }}</dd>
+              <dt>Appraisal period</dt><dd>{{ cycle.name }}</dd>
+              <dt>Effective date</dt><dd>{{ cycle.effective }}</dd>
+            </dl>
+          </div>
+          <p class="small muted mt-2">Something wrong? <a href="#" @click.prevent="showToast('A short note goes to HR; your form stays open')">Tell HR</a> — you can keep going meanwhile.</p>
+        </div>
+
+        <!-- 1 KRAs -->
+        <div v-else-if="cur==='kras'">
+          <div class="stephead"><div class="k">Section 2 · {{ cycle.wKra }}% of the overall rating</div><h2>KRAs and KPIs</h2><p>For each area: what actually happened, how you rate it, and the evidence behind the rating. Numbers beat adjectives.</p></div>
+          <div class="kra" v-for="(k,i) in form.kras" :key="i">
+            <div class="def">
+              <h3>{{ i+1 }}. {{ k.kra }}<span class="w">{{ k.weightage }}%</span></h3>
+              <dl><dt>Measured by</dt><dd>{{ k.kpi }}</dd><dt>Target</dt><dd>{{ k.target }}</dd></dl>
+            </div>
+            <div class="ans">
+              <div class="field"><label>Actual achievement / result</label><textarea class="input" :class="{err:emp.showErr && k.actual.length<20}" v-model="k.actual" @input="touch" placeholder="What you delivered against the target, with figures where you have them."></textarea><div class="counter" :class="{ok:k.actual.length>=20}">{{ k.actual.length }} / 20 min</div></div>
+              <div class="field"><label>Self rating</label>
+                <div class="rating" :class="{err:emp.showErr && !k.self}"><button v-for="n in 5" :key="n" :class="['r'+n,{on:k.self===n}]" @click="k.self=n;touch()"><span class="n">{{ n }}</span><span class="w">{{ ratingWord(n) }}</span></button></div>
+                <div class="err-text" v-if="emp.showErr && !k.self">Pick a rating from 1 to 5.</div>
+              </div>
+              <div class="field"><label>Comments / evidence</label><textarea class="input" :class="{err:emp.showErr && k.evidence.length<30}" v-model="k.evidence" @input="touch" placeholder="Reports, dashboards, dates, links — anything your manager can check."></textarea><div class="counter" :class="{ok:k.evidence.length>=30}">{{ k.evidence.length }} / 30 min</div></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 2 competencies -->
+        <div v-else-if="cur==='comps'">
+          <div class="stephead"><div class="k">Section 3 · {{ cycle.wComp }}% of the overall rating</div><h2>Behaviour and competencies</h2><p>Only the competencies that apply to your role are shown.</p></div>
+          <div class="kra" v-for="(c,i) in applicableComps" :key="i">
+            <div class="def"><h3>{{ c.competency }}<span class="w">{{ c.weightage }}%</span></h3>
+              <dl><dt>Responsibility</dt><dd>{{ c.kraLabel }}</dd><dt>Measured by</dt><dd>{{ c.kpi }}</dd><dt>Expected</dt><dd>{{ c.target }}</dd></dl></div>
+            <div class="ans">
+              <div class="field"><label>Self rating</label><div class="rating"><button v-for="n in 5" :key="n" :class="['r'+n,{on:c.self===n}]" @click="c.self=n;touch()"><span class="n">{{ n }}</span><span class="w">{{ ratingWord(n) }}</span></button></div><div class="err-text" v-if="emp.showErr && !c.self">Pick a rating.</div></div>
+              <div class="field"><label>Examples / evidence</label><textarea class="input" :class="{err:emp.showErr && c.evidence.length<20}" v-model="c.evidence" @input="touch" placeholder="One or two concrete moments from the year."></textarea><div class="counter" :class="{ok:c.evidence.length>=20}">{{ c.evidence.length }} / 20 min</div></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 3 contributions -->
+        <div v-else-if="cur==='contrib'">
+          <div class="stephead"><div class="k">Section 4 · {{ cycle.wAdd }}% of the overall rating</div><h2>Additional contribution</h2><p>Work beyond your KRAs. Fill only what applies; leave the rest blank.</p></div>
+          <div class="kra" v-for="(c,i) in form.contribs" :key="i">
+            <div class="def"><h3>{{ c.area }}<span class="w" v-if="c.weightage">{{ c.weightage }}%</span></h3><dl v-if="c.target"><dt>Expected</dt><dd>{{ c.target }}</dd></dl></div>
+            <div class="ans">
+              <div class="grid2">
+                <div class="field"><label>Contribution / achievement</label><textarea class="input" v-model="c.contribution" @input="touch"></textarea></div>
+                <div class="field"><label>Impact / benefit</label><textarea class="input" v-model="c.impact" @input="touch"></textarea></div>
+              </div>
+              <div class="field" v-if="c.contribution || c.impact"><label>Self rating</label><div class="rating compact"><button v-for="n in 5" :key="n" :class="['r'+n,{on:c.self===n}]" @click="c.self=n;touch()"><span class="n">{{ n }}</span></button></div><div class="err-text" v-if="emp.showErr && !c.self">You wrote something here — rate it too.</div></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 4 achievements -->
+        <div v-else-if="cur==='ach'">
+          <div class="stephead"><div class="k">Section 5</div><h2>Key achievements</h2><p>Up to four. At least one. The impact column is what leadership reads first.</p></div>
+          <div class="rows"><div class="rowcard" v-for="(a,i) in form.achievements" :key="i"><div class="idx">Achievement {{ i+1 }}</div>
+            <div class="grid2"><div class="field"><label>Achievement / contribution</label><textarea class="input" v-model="a.what" @input="touch"></textarea></div><div class="field"><label>Business / team impact</label><textarea class="input" :class="{err:emp.showErr && a.what && !a.impact}" v-model="a.impact" @input="touch"></textarea></div></div></div></div>
+          <div class="err-text mt-2" v-if="emp.showErr && !form.achievements.some(a=>a.what&&a.impact)">Add at least one achievement with its impact.</div>
+        </div>
+
+        <!-- 5 challenges -->
+        <div v-else-if="cur==='chal'">
+          <div class="stephead"><div class="k">Section 6</div><h2>Challenges and improvement areas</h2><p>Honest answers here are read as maturity, not weakness. At least one.</p></div>
+          <div class="rows"><div class="rowcard" v-for="(c,i) in form.challenges" :key="i"><div class="idx">Challenge {{ i+1 }}</div>
+            <div class="grid2"><div class="field"><label>Area / challenge</label><input class="input" v-model="c.area" @input="touch"></div><div class="field"><label>What was the challenge?</label><textarea class="input" v-model="c.what" @input="touch"></textarea></div></div>
+            <div class="grid2"><div class="field"><label>Action taken / learning</label><textarea class="input" v-model="c.action" @input="touch"></textarea></div><div class="field"><label>Support required</label><textarea class="input" v-model="c.support" @input="touch"></textarea></div></div></div></div>
+          <div class="err-text mt-2" v-if="emp.showErr && !form.challenges.some(c=>c.area&&c.what)">Add at least one challenge.</div>
+        </div>
+
+        <!-- 6 goals -->
+        <div v-else-if="cur==='goals'">
+          <div class="stephead"><div class="k">Section 7</div><h2>Development and future goals</h2><p>Skills you want to build and what you need to build them.</p></div>
+          <div class="rows"><div class="rowcard" v-for="(g,i) in form.goals" :key="i"><div class="idx">Goal {{ i+1 }}</div>
+            <div class="grid3"><div class="field"><label>Development area / skill</label><input class="input" v-model="g.area" @input="touch"></div><div class="field"><label>Action / training required</label><textarea class="input" v-model="g.action" @input="touch"></textarea></div><div class="field"><label>Expected outcome</label><textarea class="input" v-model="g.outcome" @input="touch"></textarea></div></div></div></div>
+          <div class="err-text mt-2" v-if="emp.showErr && !form.goals.some(g=>g.area&&g.action)">Add at least one goal.</div>
+        </div>
+
+        <!-- 7 overall -->
+        <div v-else-if="cur==='overall'">
+          <div class="stephead"><div class="k">Section 8</div><h2>Overall self-assessment</h2><p>Five questions. A few sentences each.</p></div>
+          <div class="rows"><div class="rowcard" v-for="(q,i) in form.overall" :key="i"><div class="field"><label>{{ q.q }}</label><textarea class="input" :class="{err:emp.showErr && q.a.length<20}" v-model="q.a" @input="touch"></textarea><div class="counter" :class="{ok:q.a.length>=20}">{{ q.a.length }} / 20 min</div></div></div></div>
+        </div>
+
+        <!-- 8 suggestions (optional) -->
+        <div v-else-if="cur==='sugg'">
+          <div class="stephead"><div class="k">Section 9 · optional</div><h2>Organisational development</h2><p>Where the company could work better. Skip any row. HR reads these separately from your rating.</p></div>
+          <div class="rows"><div class="rowcard" v-for="(s,i) in form.suggestions" :key="i"><div class="idx">{{ s.title }}</div>
+            <div class="grid3"><div class="field"><label>{{ s.q1 }}</label><textarea class="input" v-model="s.a1" @input="touch"></textarea></div><div class="field"><label>{{ s.q2 }}</label><textarea class="input" v-model="s.a2" @input="touch"></textarea></div><div class="field"><label>{{ s.q3 }}</label><textarea class="input" v-model="s.a3" @input="touch"></textarea></div></div></div></div>
+        </div>
+
+        <!-- 9 ahead -->
+        <div v-else-if="cur==='ahead'">
+          <div class="stephead"><div class="k">Section 10</div><h2>Looking ahead — next cycle</h2><p>This becomes the starting point for next year’s KRAs.</p></div>
+          <div class="rows"><div class="rowcard" v-for="(q,i) in form.ahead" :key="i"><div class="field"><label>{{ q.q }}</label><textarea class="input" :class="{err:emp.showErr && q.a.length<10}" v-model="q.a" @input="touch"></textarea></div></div></div>
+        </div>
+
+        <!-- 10 summary -->
+        <div v-else-if="cur==='summary'">
+          <div class="stephead"><div class="k">Section 11</div><h2>Overall self-rating</h2><p>Section ratings are pre-filled from your weighted averages. Change them if you think the average misses something — say why.</p></div>
+          <div class="card">
+            <table class="table"><thead><tr><th>Evaluation area</th><th>Weight</th><th>Weighted avg</th><th>Your rating</th></tr></thead><tbody>
+              <tr><td>Performance / KRAs & KPIs</td><td>{{ cycle.wKra }}%</td><td>{{ secAvg.kra.toFixed(2) }}</td><td style="width:260px"><div class="rating compact"><button v-for="n in 5" :key="n" :class="['r'+n,{on:form.secRating.kra===n}]" @click="form.secRating.kra=n;touch()"><span class="n">{{ n }}</span></button></div></td></tr>
+              <tr><td>Behaviour & competencies</td><td>{{ cycle.wComp }}%</td><td>{{ secAvg.comp.toFixed(2) }}</td><td><div class="rating compact"><button v-for="n in 5" :key="n" :class="['r'+n,{on:form.secRating.comp===n}]" @click="form.secRating.comp=n;touch()"><span class="n">{{ n }}</span></button></div></td></tr>
+              <tr><td>Additional contribution</td><td>{{ cycle.wAdd }}%</td><td>{{ secAvg.add ? secAvg.add.toFixed(2) : '–' }}</td><td><div class="rating compact"><button v-for="n in 5" :key="n" :class="['r'+n,{on:form.secRating.add===n}]" @click="form.secRating.add=n;touch()"><span class="n">{{ n }}</span></button></div></td></tr>
+              <tr><td><b>Overall</b></td><td>100%</td><td><b>{{ selfScore.toFixed(2) }}</b></td><td><b>{{ overallSelf ? overallSelf.toFixed(2) : '–' }}</b> <span class="muted small">from your section ratings</span></td></tr>
+            </tbody></table>
+            <div class="field mt-3"><label>Employee comments</label><textarea class="input" v-model="form.secComment" @input="touch" placeholder="Optional — context for the ratings above."></textarea></div>
+          </div>
+          <div class="card mt-3 summary">
+            <div class="sec-h" style="margin-bottom:0"><h3>Everything you’ve written</h3><span class="small muted">Tap “edit” to jump back</span></div>
+            <div class="sec"><div class="sec-h"><h3>KRAs</h3><button class="edit" @click="go(1)">edit</button></div>
+              <div class="small" v-for="(k,i) in form.kras" :key="i" style="margin-bottom:8px"><b>{{ k.kra }}</b> — rated {{ k.self||'–' }}<div class="muted">{{ k.actual || 'No result written' }}</div></div></div>
+            <div class="sec"><div class="sec-h"><h3>Competencies</h3><button class="edit" @click="go(2)">edit</button></div>
+              <div class="small" v-for="(c,i) in applicableComps" :key="i"><b>{{ c.competency }}</b> — rated {{ c.self||'–' }}</div></div>
+            <div class="sec"><div class="sec-h"><h3>Achievements</h3><button class="edit" @click="go(4)">edit</button></div>
+              <div class="small" v-for="(a,i) in form.achievements.filter(a=>a.what)" :key="i">• {{ a.what }}</div><div class="small muted" v-if="!form.achievements.some(a=>a.what)">None yet</div></div>
+            <div class="sec"><div class="sec-h"><h3>Challenges · Goals · Looking ahead</h3><button class="edit" @click="go(5)">edit</button></div>
+              <div class="small muted">{{ form.challenges.filter(c=>c.area).length }} challenges · {{ form.goals.filter(g=>g.area).length }} goals · {{ form.ahead.filter(q=>q.a).length }} of 4 looking-ahead answers</div></div>
+          </div>
+        </div>
+
+        <!-- 11 declaration -->
+        <div v-else-if="cur==='decl'">
+          <div class="stephead"><div class="k">Section 12</div><h2>Declaration and submit</h2><p>Once you submit, the form locks and goes to {{ me.manager }}. HR can reopen it if something needs correcting.</p></div>
+          <div class="card">
+            <p>I confirm that the information provided in this self-appraisal is accurate and reflects my performance and contributions during the appraisal period to the best of my knowledge.</p>
+            <div class="grid2 mt-3">
+              <div class="field"><label>Type your full name as signature</label><input class="input" :class="{err:emp.showErr && !nameMatches}" v-model="form.declName" placeholder="{{ me.name }}"><div class="err-text" v-if="emp.showErr && !nameMatches">Must match “{{ me.name }}” exactly.</div></div>
+              <div class="field"><label>Date</label><input class="input" :value="todayStr" disabled></div>
+            </div>
+            <label class="check mt-3"><input type="checkbox" v-model="form.declAccept"> I have read and agree to the declaration above.</label>
+            <div class="mt-3 small" :class="allValid ? 'muted' : 'err-text'">{{ allValid ? 'All sections complete.' : incompleteText }}</div>
+          </div>
+        </div>
+
+      </div>
+      </transition>
+      </div>
+
+      <div class="footbar">
+        <button class="btn ghost" :disabled="emp.step===0" @click="back">Back</button>
+        <span class="saved small" :class="{saving:saving}" style="display:none"></span>
+        <div class="row">
+          <button class="btn ghost" v-if="steps[emp.step].optional" @click="next(true)">Skip</button>
+          <button class="btn primary" v-if="cur!=='decl'" @click="next()">{{ cur==='summary' ? 'Looks right, continue' : 'Save and continue' }}</button>
+          <button class="btn primary" v-else :disabled="!allValid || !form.declAccept || !nameMatches" @click="submitForm">Submit my appraisal</button>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+<!-- ================= HR CONSOLE ================= -->
+<div class="hr" v-else>
+  <nav class="hr-nav">
+    <div class="wordmark"><i></i>Appraisal · HR</div>
+    <button v-for="v in hrViews" :key="v.key" :class="{on:hr.view===v.key}" @click="hr.view=v.key">{{ v.label }}<span class="cnt" v-if="v.count!==undefined">{{ v.count }}</span></button>
+    <div style="margin-top:auto;padding:14px 10px" class="xs muted">Signed in as asha@cozycornerpatios.com<br>WF HR Manager</div>
+  </nav>
+
+  <main class="hr-main">
+    <!-- DASHBOARD -->
+    <div v-if="hr.view==='dash'">
+      <div class="head"><div><h1>{{ cycle.name }}</h1><p>Self-appraisal window {{ cycle.selfStart }} – {{ cycle.selfEnd }} · {{ daysLeft }} days left · {{ people.length }} people in scope</p></div>
+        <div class="row"><button class="btn" @click="hr.view='send'">Send invitations</button><button class="btn primary" @click="sendReminders">Remind {{ notSubmitted.length }} not submitted</button></div></div>
+      <div class="kpis">
+        <div class="kpi"><b>{{ count('Sent')+count('In Progress') }}</b><span>invited, not submitted</span><div class="trend">{{ count('In Progress') }} have started</div></div>
+        <div class="kpi"><b>{{ count('Submitted')+count('Manager Review') }}</b><span>waiting for manager</span><div class="trend" style="color:var(--marigold)" v-if="overdueMgr.length">{{ overdueMgr.length }} over 3 days</div></div>
+        <div class="kpi"><b>{{ count('Manager Submitted') }}</b><span>ready for calibration</span></div>
+        <div class="kpi"><b>{{ count('Calibrated')+count('Final Approved')+count('Closed') }}</b><span>calibrated or beyond</span></div>
+        <div class="kpi"><b>{{ pct }}%</b><span>submission rate</span><div class="trend">{{ count('Draft')+count('Ready') }} not yet sent</div></div>
+      </div>
+      <div class="two">
+        <div class="card">
+          <div class="row between"><h3>Where everyone is, by department</h3><span class="xs muted">click a cell for names</span></div>
+          <table class="matrix mt-2"><thead><tr><th>Department</th><th v-for="s in shortStatuses" :key="s">{{ s }}</th><th>Total</th></tr></thead>
+            <tbody><tr v-for="d in depts" :key="d"><td>{{ d }}</td><td v-for="s in shortStatuses" :key="s" :class="heat(cell(d,s))" @click="openCell(d,s)">{{ cell(d,s)||'' }}</td><td style="background:none;font-weight:600">{{ people.filter(p=>p.dept===d).length }}</td></tr></tbody></table>
+        </div>
+        <div class="card">
+          <h3>Submissions per day</h3>
+          <canvas id="chart" height="190" class="mt-2"></canvas>
+          <div class="sec"><div class="sec-h"><h3>Needs a nudge</h3><span class="chip gold">{{ overdueMgr.length + notStarted.length }}</span></div>
+            <div class="small" v-for="p in overdueMgr.slice(0,3)" :key="p.id">• <b>{{ p.manager }}</b> hasn’t reviewed {{ p.name }} ({{ p.daysWaiting }} days)</div>
+            <div class="small" v-for="p in notStarted.slice(0,3)" :key="'n'+p.id">• <b>{{ p.name }}</b> hasn’t opened the link</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CYCLE -->
+    <div v-else-if="hr.view==='cycle'">
+      <div class="head"><div><h1>Cycle settings</h1><p>Everything on the paper form’s header and footer lives here. Change a date and every email, reminder and window follows.</p></div><button class="btn primary" @click="showToast('Cycle saved')">Save changes</button></div>
+      <div class="two">
+        <div class="card">
+          <h3>Identity</h3>
+          <div class="grid2 mt-2"><div class="field"><label>Cycle name</label><input class="input" v-model="cycle.name"></div><div class="field"><label>Revision label</label><input class="input" v-model="cycle.revision"></div></div>
+          <div class="grid2 mt-2"><div class="field"><label>Effective date</label><input class="input" v-model="cycle.effective"></div><div class="field"><label>Closure date</label><input class="input" v-model="cycle.closure"></div></div>
+          <div class="grid2 mt-2"><div class="field"><label>CEO (reviews the managers)</label><select class="input" v-model="cycle.ceo"><option>Priyesh Sir</option></select></div><div class="field"><label>Send emails from</label><select class="input"><option>Default outgoing (info@cozycornerpatios.com)</option><option disabled>hr@cozycornerpatios.com — not configured yet</option></select></div></div>
+          <h3 class="mt-4">Section weights</h3>
+          <div class="grid3 mt-2"><div class="field"><label>KRAs / KPIs</label><input class="input" type="number" v-model.number="cycle.wKra"></div><div class="field"><label>Behaviour & competencies</label><input class="input" type="number" v-model.number="cycle.wComp"></div><div class="field"><label>Additional contribution</label><input class="input" type="number" v-model.number="cycle.wAdd"></div></div>
+          <div class="weightbar mt-2"><i :style="{width:cycle.wKra+'%',background:'var(--moss)'}"></i><i :style="{width:cycle.wComp+'%',background:'var(--moss-2)'}"></i><i :style="{width:cycle.wAdd+'%',background:'#93BCC8'}"></i></div>
+          <div class="small mt-1" :class="weightsOk?'muted':'err-text'">{{ cycle.wKra+cycle.wComp+cycle.wAdd }} / 100 {{ weightsOk?'':'— must total 100' }}</div>
+        </div>
+        <div class="card">
+          <div class="row between"><h3>Stage windows</h3><label class="check small"><button class="toggle" :class="{on:cycle.enforce}" @click="cycle.enforce=!cycle.enforce"></button>Enforce dates</label></div>
+          <p class="xs muted mt-1">Off: people can act on any day, dates are informational. On: the form and review lock outside their window.</p>
+          <div class="rows mt-3">
+            <div class="grid2" v-for="w in windows" :key="w.key"><div class="field"><label>{{ w.label }} from</label><input class="input" v-model="cycle[w.key+'Start']"></div><div class="field"><label>to</label><input class="input" v-model="cycle[w.key+'End']"></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TEMPLATES -->
+    <div v-else-if="hr.view==='tpl'">
+      <div class="head"><div><h1>KRA templates</h1><p>One template per team. Pick it when you send; every person in that group gets these KRAs and competencies pre-filled.</p></div><button class="btn primary" @click="newTemplate">New template</button></div>
+      <div class="list-tpl" v-if="!hr.tplOpen">
+        <div class="tplcard" v-for="t in templates" :key="t.id" @click="hr.tplOpen=t">
+          <div class="row between"><h4>{{ t.name }}</h4><span class="chip" :class="tplWeightOk(t)?'moss':'brick'">{{ tplKraSum(t) }}%</span></div>
+          <div class="meta">{{ t.team }} · {{ t.kras.length }} KRAs · {{ t.comps.filter(c=>c.on).length }} competencies · used by {{ people.filter(p=>p.template===t.id).length }} people</div>
+          <div class="weightbar mt-2"><i v-for="(k,i) in t.kras" :key="i" :style="{width:(k.weightage/cycle.wKra*100)+'%',background:i%2?'var(--moss-2)':'var(--moss)',borderRight:'2px solid #fff'}"></i></div>
+        </div>
+        <div class="tplcard new" @click="newTemplate">+ New template</div>
+      </div>
+
+      <div v-else>
+        <button class="btn ghost sm" @click="hr.tplOpen=null">← All templates</button>
+        <div class="card mt-2">
+          <div class="grid2"><div class="field"><label>Template name</label><input class="input" v-model="hr.tplOpen.name"></div><div class="field"><label>Team / group</label><input class="input" v-model="hr.tplOpen.team" placeholder="e.g. Marketing – Paid Search"></div></div>
+          <div class="row between mt-4"><h3>KRAs / KPIs — {{ cycle.wKra }}% section</h3><span class="chip" :class="tplWeightOk(hr.tplOpen)?'moss':'brick'">weights total {{ tplKraSum(hr.tplOpen) }} of {{ cycle.wKra }}</span></div>
+          <div class="weightbar mt-2"><i v-for="(k,i) in hr.tplOpen.kras" :key="i" :style="{width:(k.weightage/cycle.wKra*100)+'%',background:i%2?'var(--moss-2)':'var(--moss)',borderRight:'2px solid #fff'}"></i></div>
+          <div class="tpl-row mt-2" style="border-bottom:0;padding-bottom:0"><span></span><span class="xs muted">KRA</span><span class="xs muted">Weight %</span><span class="xs muted">KPI / measurement</span><span class="xs muted">Target / expected outcome</span><span></span></div>
+          <div class="tpl-row" v-for="(k,i) in hr.tplOpen.kras" :key="i">
+            <span class="idx">{{ i+1 }}</span>
+            <textarea class="input" v-model="k.kra" placeholder="e.g. Organic revenue contribution"></textarea>
+            <input class="input" type="number" v-model.number="k.weightage">
+            <textarea class="input" v-model="k.kpi" placeholder="What is measured, and where"></textarea>
+            <textarea class="input" v-model="k.target" placeholder="The number or outcome that means 3 – Meets expectations"></textarea>
+            <button class="x" @click="hr.tplOpen.kras.splice(i,1)" title="Remove">×</button>
+          </div>
+          <button class="btn sm mt-2" @click="hr.tplOpen.kras.push({kra:'',weightage:0,kpi:'',target:''})">+ Add KRA</button>
+
+          <div class="row between mt-4"><h3>Behaviour & competencies — {{ cycle.wComp }}% section</h3><span class="chip" :class="tplCompSum(hr.tplOpen)===cycle.wComp?'moss':'gold'">weights total {{ tplCompSum(hr.tplOpen) }} of {{ cycle.wComp }}</span></div>
+          <p class="xs muted">Switch off the ones that don’t apply to this team. Off rows are hidden from the employee.</p>
+          <div class="tpl-row" v-for="(c,i) in hr.tplOpen.comps" :key="'c'+i" :style="{opacity:c.on?1:.45}">
+            <button class="toggle" :class="{on:c.on}" @click="c.on=!c.on" style="margin-top:8px"></button>
+            <div><b style="font-size:13.5px">{{ c.competency }}</b><input class="input mt-1" v-model="c.kraLabel" placeholder="Responsibility label" :disabled="!c.on"></div>
+            <input class="input" type="number" v-model.number="c.weightage" :disabled="!c.on">
+            <textarea class="input" v-model="c.kpi" placeholder="KPI / measurement" :disabled="!c.on"></textarea>
+            <textarea class="input" v-model="c.target" placeholder="Expected outcome" :disabled="!c.on"></textarea>
+            <span></span>
+          </div>
+
+          <div class="row between mt-4"><h3>Additional contribution — {{ cycle.wAdd }}% section</h3><span class="xs muted">Define a target only where the team has one; the rest stay open</span></div>
+          <div class="tpl-row" v-for="(c,i) in hr.tplOpen.contribs" :key="'a'+i">
+            <span></span><b style="font-size:13.5px;padding-top:8px">{{ c.area }}</b><input class="input" type="number" v-model.number="c.weightage" placeholder="–"><textarea class="input" v-model="c.kpi" placeholder="KPI (optional)"></textarea><textarea class="input" v-model="c.target" placeholder="Target (optional)"></textarea><span></span>
+          </div>
+          <div class="row between mt-4 wrap"><span class="small muted">Changes affect people you send to from now on. Already-sent forms keep their copy.</span><div class="row"><button class="btn" @click="duplicateTemplate(hr.tplOpen)">Duplicate</button><button class="btn primary" @click="showToast('Template saved');hr.tplOpen=null">Save template</button></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PEOPLE -->
+    <div v-else-if="hr.view==='people'">
+      <div class="head"><div><h1>People</h1><p>Who is being appraised, who reviews them, and which template they follow. The manager column decides where each form goes.</p></div><div class="row"><button class="btn" @click="hr.modal='import'">Import CSV</button><button class="btn primary" @click="hr.modal='person'">Add person</button></div></div>
+      <div class="filters"><input class="input" placeholder="Search name or ID" v-model="hr.q"><select class="input" v-model="hr.fDept"><option value="">All departments</option><option v-for="d in depts" :key="d">{{ d }}</option></select></div>
+      <div class="card" style="padding:0;overflow:auto"><table class="table"><thead><tr><th>Name</th><th>ID</th><th>Department</th><th>Designation</th><th>Reports to</th><th>Template</th><th>Role</th><th></th></tr></thead>
+        <tbody><tr v-for="p in filteredPeople" :key="p.id"><td><b>{{ p.name }}</b><div class="xs muted">{{ p.email }}</div></td><td>{{ p.id }}</td><td>{{ p.dept }}</td><td>{{ p.designation }}</td><td>{{ p.manager }}</td><td><select class="input" style="padding:5px 8px;font-size:13px" v-model="p.template"><option :value="null">— none —</option><option v-for="t in templates" :key="t.id" :value="t.id">{{ t.name }}</option></select></td><td><span class="chip ink" v-if="p.isCeo">CEO</span><span class="chip sky" v-else-if="p.isManager">Manager</span><span class="chip" v-else>Employee</span></td><td><button class="btn ghost sm" @click="hr.modal='person'">Edit</button></td></tr></tbody></table></div>
+    </div>
+
+    <!-- SEND -->
+    <div v-else-if="hr.view==='send'">
+      <div class="head"><div><h1>Send invitations</h1><p>Each person gets a private link and a one-time password. Pick who, confirm the template, preview the mail, send.</p></div></div>
+      <div class="two">
+        <div>
+          <div class="card">
+            <div class="row between wrap"><h3>1. Who</h3><div class="row"><select class="input" style="width:auto;padding:6px 10px" v-model="hr.sendDept"><option value="">Every department</option><option v-for="d in depts" :key="d">{{ d }}</option></select><button class="btn sm" @click="selectAllReady">Select all not yet sent</button></div></div>
+            <table class="table mt-2"><thead><tr><th style="width:30px"></th><th>Name</th><th>Reports to</th><th>Template</th><th>Status</th></tr></thead>
+              <tbody><tr v-for="p in sendable" :key="p.id" class="click" @click="toggleSel(p)"><td><input type="checkbox" :checked="hr.sel.includes(p.id)" @click.stop="toggleSel(p)"></td><td><b>{{ p.name }}</b><div class="xs muted">{{ p.designation }}</div></td><td>{{ p.manager }}</td><td><select class="input" style="padding:4px 8px;font-size:13px" v-model="p.template" @click.stop><option :value="null">— pick —</option><option v-for="t in templates" :key="t.id" :value="t.id">{{ t.name }}</option></select></td><td><span class="chip" :class="statusChip(p.status)">{{ p.status }}</span></td></tr></tbody></table>
+            <div class="err-text mt-2" v-if="selMissingTpl.length">{{ selMissingTpl.length }} selected {{ selMissingTpl.length===1?'person has':'people have' }} no template — they can’t be sent.</div>
+          </div>
+        </div>
+        <div>
+          <div class="card"><h3>2. Preview</h3>
+            <div class="mailprev mt-2">
+              <div class="from">From: Cozy Corner Patios HR &lt;info@cozycornerpatios.com&gt; · To: {{ previewPerson ? previewPerson.email : '…' }}</div>
+              <p><b>Your self-appraisal is ready — {{ cycle.name }}</b></p>
+              <p class="mt-2">Hi {{ previewPerson ? firstOf(previewPerson.name) : 'there' }},</p>
+              <p class="mt-1">Your self-appraisal for the {{ cycle.name }} is open until <b>{{ cycle.selfEnd }}</b>. It takes about 35 minutes and saves as you go.</p>
+              <p class="mt-2"><a href="#" @click.prevent>Open my appraisal</a></p>
+              <p class="mt-2">Your password: <span class="pw">K7M3QX2P</span></p>
+              <p class="mt-2 muted xs">This link is personal to you. Please don’t forward it. If you have trouble, reply to this email.</p>
+            </div>
+          </div>
+          <div class="card mt-3"><h3>3. Send</h3><p class="small muted mt-1">{{ hr.sel.length }} selected. Each gets their own link and password; you can resend or unlock later from Monitor.</p>
+            <button class="btn primary mt-2" style="width:100%" :disabled="!hr.sel.length || selMissingTpl.length>0" @click="sendInvites">Send {{ hr.sel.length }} invitation{{ hr.sel.length===1?'':'s' }}</button></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MONITOR -->
+    <div v-else-if="hr.view==='mon'">
+      <div class="head"><div><h1>Monitor</h1><p>Every appraisal, one row each. Open a row to read it, move it through the stages, or reopen it.</p></div></div>
+      <div class="filters"><input class="input" placeholder="Search" v-model="hr.q"><select class="input" v-model="hr.fDept"><option value="">All departments</option><option v-for="d in depts" :key="d">{{ d }}</option></select><select class="input" v-model="hr.fStatus"><option value="">All statuses</option><option v-for="s in statuses" :key="s">{{ s }}</option></select><select class="input" v-model="hr.fMgr"><option value="">All managers</option><option v-for="m in managers" :key="m">{{ m }}</option></select></div>
+      <div class="card" style="padding:0;overflow:auto"><table class="table"><thead><tr><th>Name</th><th>Department</th><th>Reports to</th><th>Status</th><th>Self</th><th>Manager</th><th>Last activity</th></tr></thead>
+        <tbody><tr v-for="p in filteredPeople" :key="p.id" class="click" @click="hr.drawer=p"><td><b>{{ p.name }}</b><div class="xs muted">{{ p.designation }}</div></td><td>{{ p.dept }}</td><td>{{ p.manager }}</td><td><span class="chip" :class="statusChip(p.status)"><span class="dot"></span>{{ p.status }}</span><span class="chip brick" v-if="p.locked" style="margin-left:6px">locked</span></td><td>{{ p.selfScore ? p.selfScore.toFixed(2) : '–' }}</td><td>{{ p.mgrScore ? p.mgrScore.toFixed(2) : '–' }}</td><td class="small muted">{{ p.last }}</td></tr></tbody></table></div>
+    </div>
+
+    <!-- EXPORT -->
+    <div v-else-if="hr.view==='exp'">
+      <div class="head"><div><h1>Export</h1><p>Two shapes. Both are plain CSV that opens cleanly in Excel or Google Sheets.</p></div></div>
+      <div class="two">
+        <div class="card"><h3>Wide — one row per person</h3><p class="small muted mt-1">Every field flat: details, each KRA’s target / result / self / manager rating, all free-text answers, scores, stage dates. Good for the calibration meeting.</p>
+          <div class="filters mt-3"><select class="input" v-model="hr.expDept"><option value="">All departments</option><option v-for="d in depts" :key="d">{{ d }}</option></select><select class="input" v-model="hr.expStatus"><option value="">Any status</option><option>Submitted onwards</option><option>Manager Submitted onwards</option></select></div>
+          <button class="btn primary" @click="exportCsv('wide')">Download wide CSV</button></div>
+        <div class="card"><h3>Long — one row per KRA</h3><p class="small muted mt-1">Person × KRA rows with weight, target, result, both ratings and comments. Pivot-friendly.</p>
+          <button class="btn primary mt-3" @click="exportCsv('long')">Download long CSV</button>
+          <div class="sec"><h3>Per-person PDF</h3><p class="small muted mt-1">Open any person in Monitor → “Print view” → save as PDF. Same layout as the paper form.</p></div></div>
+      </div>
+    </div>
+  </main>
+
+  <!-- DRAWER -->
+  <div v-if="hr.drawer"><div class="drawer-bg" @click="hr.drawer=null"></div>
+    <div class="drawer">
+      <div class="row between"><div><h2>{{ hr.drawer.name }}</h2><div class="small muted">{{ hr.drawer.designation }} · {{ hr.drawer.dept }} · reports to {{ hr.drawer.manager }}</div></div><button class="x" @click="hr.drawer=null">×</button></div>
+      <div class="row mt-2 wrap"><span class="chip" :class="statusChip(hr.drawer.status)"><span class="dot"></span>{{ hr.drawer.status }}</span><span class="chip" v-if="hr.drawer.selfScore">self {{ hr.drawer.selfScore.toFixed(2) }}</span><span class="chip" v-if="hr.drawer.mgrScore">manager {{ hr.drawer.mgrScore.toFixed(2) }}</span><span class="chip brick" v-if="hr.drawer.locked">locked after 5 wrong passwords</span></div>
+      <div class="stages mt-3">
+        <div class="s" v-for="(s,i) in statuses.filter(s=>s!=='Draft'&&s!=='Ready')" :key="s" :class="{done:statusIdx(hr.drawer.status)>statusIdx(s), cur:hr.drawer.status===s}"><div class="mk">{{ statusIdx(hr.drawer.status)>statusIdx(s)?'✓':'' }}</div><div><div class="t">{{ s }}</div><div class="d">{{ stageHint(s) }}</div></div></div>
+      </div>
+      <div class="card" style="padding:14px">
+        <h3 class="small">Actions available now</h3>
+        <div class="row wrap mt-2">
+          <template v-if="['Draft','Ready'].includes(hr.drawer.status)"><button class="btn sm primary" @click="hr.view='send';hr.drawer=null">Go to send</button></template>
+          <template v-if="['Sent','In Progress'].includes(hr.drawer.status)"><button class="btn sm" @click="showToast('Reminder sent to '+hr.drawer.name)">Send reminder</button><button class="btn sm" @click="showToast('New password emailed')">Resend password</button><button class="btn sm" v-if="hr.drawer.locked" @click="hr.drawer.locked=false;showToast('Unlocked, fresh link sent')">Unlock</button></template>
+          <template v-if="hr.drawer.status==='Submitted'"><button class="btn sm primary" @click="advance(hr.drawer,'Manager Review')">Mark reviewed → to manager</button><button class="btn sm danger" @click="hr.modal='reopen'">Reopen for employee</button></template>
+          <template v-if="hr.drawer.status==='Manager Review'"><button class="btn sm" @click="showToast('Reminder sent to '+hr.drawer.manager)">Remind manager</button><button class="btn sm danger" @click="hr.modal='reopen'">Reopen</button></template>
+          <template v-if="hr.drawer.status==='Manager Submitted'"><div class="field grow"><label>HR / management final rating</label><div class="rating compact"><button v-for="n in 5" :key="n" :class="['r'+n,{on:hr.drawer.hrRating===n}]" @click="hr.drawer.hrRating=n"><span class="n">{{ n }}</span></button></div></div><button class="btn sm primary" :disabled="!hr.drawer.hrRating" @click="advance(hr.drawer,'Calibrated')">Mark calibrated</button><button class="btn sm danger" @click="hr.modal='reopen'">Reopen for manager</button></template>
+          <template v-if="hr.drawer.status==='Calibrated'"><button class="btn sm primary" @click="advance(hr.drawer,'Final Approved')">Final approval recorded</button></template>
+          <template v-if="hr.drawer.status==='Final Approved'"><button class="btn sm primary" @click="advance(hr.drawer,'Discussed')">Discussion held</button></template>
+          <template v-if="hr.drawer.status==='Discussed'"><button class="btn sm primary" @click="advance(hr.drawer,'Closed')">Close</button></template>
+          <button class="btn sm ghost" v-if="statusIdx(hr.drawer.status)>=statusIdx('Submitted')" @click="showToast('Read-only form view opens')">Read the form</button>
+          <button class="btn sm ghost" v-if="statusIdx(hr.drawer.status)>=statusIdx('Submitted')" @click="showToast('Print view opens')">Print view</button>
+        </div>
+      </div>
+      <div class="mt-3"><h3 class="small">Activity</h3>
+        <div class="small muted mt-1" v-for="(a,i) in hr.drawer.log" :key="i">{{ a }}</div></div>
+    </div>
+  </div>
+
+  <!-- MODALS -->
+  <div class="modal-bg" v-if="hr.modal" @click.self="hr.modal=null">
+    <div class="modal" v-if="hr.modal==='reopen'">
+      <h2>Reopen {{ hr.drawer.name }}’s appraisal</h2>
+      <p class="muted small mt-1">Their answers stay. They get an email explaining what to change and the form unlocks for them.</p>
+      <div class="field mt-3"><label>Reason (goes in the email)</label><textarea class="input" v-model="hr.reopenReason" placeholder="e.g. KRA 3 result refers to the wrong period — please correct."></textarea></div>
+      <div class="row mt-3" style="justify-content:flex-end"><button class="btn" @click="hr.modal=null">Cancel</button><button class="btn danger" :disabled="hr.reopenReason.length<10" @click="reopen">Reopen and notify</button></div>
+    </div>
+    <div class="modal" v-else-if="hr.modal==='import'">
+      <h2>Import people from CSV</h2>
+      <p class="muted small mt-1">Columns: employee_id, name, email, department, designation, date_of_joining, reporting_manager_id, template. Existing IDs are updated, new ones added. Nothing is sent.</p>
+      <div class="card mt-3" style="border-style:dashed;text-align:center;padding:30px;color:var(--ink-3)">Drop a .csv here or <a href="#" @click.prevent>browse</a><br><span class="xs">Download the <a href="#" @click.prevent>blank template</a></span></div>
+      <div class="row mt-3" style="justify-content:flex-end"><button class="btn" @click="hr.modal=null">Cancel</button><button class="btn primary" @click="hr.modal=null;showToast('Preview would show 12 new · 3 updated · 0 errors before you confirm')">Preview import</button></div>
+    </div>
+    <div class="modal" v-else-if="hr.modal==='person'">
+      <h2>Person</h2>
+      <div class="grid2 mt-3"><div class="field"><label>Full name</label><input class="input" value="Bhanu Pratap"></div><div class="field"><label>Employee ID</label><input class="input" value="INCOR101"></div></div>
+      <div class="grid2 mt-2"><div class="field"><label>Email</label><input class="input" value="bhanu@cozycornerpatios.com"></div><div class="field"><label>Date of joining</label><input class="input" value="25 Feb 2025"></div></div>
+      <div class="grid2 mt-2"><div class="field"><label>Department</label><input class="input" value="Marketing"></div><div class="field"><label>Designation</label><input class="input" value="Associate Manager - SEO"></div></div>
+      <div class="grid2 mt-2"><div class="field"><label>Reports to</label><select class="input"><option>Vivek Singh</option><option v-for="m in managers" :key="m">{{ m }}</option></select></div><div class="field"><label>Template</label><select class="input"><option v-for="t in templates" :key="t.id">{{ t.name }}</option></select></div></div>
+      <label class="check mt-3"><input type="checkbox"> Manages other people (gets a “My team” area)</label>
+      <div class="row mt-3" style="justify-content:flex-end"><button class="btn" @click="hr.modal=null">Cancel</button><button class="btn primary" @click="hr.modal=null;showToast('Saved')">Save person</button></div>
+    </div>
+    <div class="modal" v-else-if="hr.modal==='cell'">
+      <h2>{{ hr.cell.dept }} · {{ hr.cell.status }}</h2>
+      <div class="rows mt-3"><div class="team-card" v-for="p in hr.cell.list" :key="p.id" @click="hr.modal=null;hr.view='mon';hr.drawer=p"><div class="avatar">{{ initials(p.name) }}</div><div class="grow"><b>{{ p.name }}</b><div class="small muted">{{ p.designation }} · reports to {{ p.manager }}</div></div><span class="small muted">{{ p.last }}</span></div><div class="muted small" v-if="!hr.cell.list.length">Nobody here.</div></div>
+      <div class="row mt-3" style="justify-content:flex-end"><button class="btn" @click="hr.modal=null">Close</button></div>
+    </div>
+  </div>
+</div>
+
+</div><!-- frame -->
+</div><!-- stage -->
+
+<div class="toast-wrap"><div class="toast" v-for="t in toasts" :key="t.id">{{ t.msg }}</div></div>
+</div><!-- app -->
+<script>
+const { createApp } = Vue;
+const RW = {1:'Unsatisfactory',2:'Needs improvement',3:'Meets expectations',4:'Exceeds expectations',5:'Exceptional'};
+const COMPS = ['Teamwork','Communication','Ownership','Problem-solving','Discipline'];
+const AREAS = ['Process Improvement','Additional Responsibility','Cost Saving','Cross-Team Support'];
+const STATUSES = ['Draft','Ready','Sent','In Progress','Submitted','Manager Review','Manager Submitted','Calibrated','Final Approved','Discussed','Closed'];
+
+function comps(spec){ return COMPS.map(n=>{const s=spec[n]; return {competency:n,on:!!s,weightage:s?s[0]:0,kraLabel:s?s[1]:'',kpi:s?s[2]:'',target:s?s[3]:''};}); }
+function contribs(spec){ return AREAS.map(a=>{const s=(spec||{})[a]; return {area:a,weightage:s?s[0]:null,kpi:s?s[1]:'',target:s?s[2]:''};}); }
+
+const TEMPLATES = [
+ {id:'seo',name:'SEO — Associate Manager',team:'Marketing – SEO',kras:[
+   {kra:'Organic revenue contribution',weightage:16,kpi:'Organic-channel net revenue and sessions (GA4 / warehouse channel tables)',target:'Grow organic net revenue by 50% against the period-opening baseline across both brands'},
+   {kra:'Keyword ranking performance',weightage:14,kpi:'Positions across the tracked priority keyword set, verified against a live SERP',target:'Move 50 priority keywords into the top 10 and 20 into the top 3, each verified on a live SERP'},
+   {kra:'Content programme delivery',weightage:12,kpi:'Optimised pages published and indexed',target:'Publish 20–30 optimised pages per month across both brands, all under /pages/; 90% indexed within 30 days'},
+   {kra:'Technical SEO health',weightage:10,kpi:'Crawlability, indexation, Core Web Vitals, schema coverage',target:'No critical technical issue unresolved beyond 10 working days; schema coverage at or above 90% of priority templates'},
+   {kra:'AI search / GEO visibility',weightage:10,kpi:'Brand citations in AI Overviews, ChatGPT and Perplexity across the tracked query set',target:'Establish a tracked GEO baseline within the first month, then grow cited queries by 100%'},
+   {kra:'Reporting integrity',weightage:8,kpi:'Accuracy and completeness of SEO reporting',target:'Every traffic figure reported with a country split; every figure traceable to source'}],
+  comps:comps({Teamwork:[8,'Ownership & Accountability','Ownership of ranking and traffic outcomes','Diagnoses ranking or traffic losses to root cause and proposes a remedy without being asked'],Communication:[7,'Collaboration & Communication','Working relationship with content, development, paid and category functions','Translates technical SEO requirements into clear, actionable briefs'],Ownership:[5,'Discipline & Professionalism','Consistency of process and adherence to standing rules','Follows the agreed publishing, verification and reporting rules across both brands']}),
+  contribs:contribs({'Process Improvement':[10,'Improvements implemented; support given outside SEO','Implement at least 2 documented improvements to the SEO or content workflow']})},
+ {id:'paid',name:'Paid Search — Sr. Manager',team:'Marketing – Performance',kras:[
+   {kra:'ZIPCushions paid search profitability',weightage:18,kpi:'Account ROAS — Google Ads cost against Shopify net revenue, cross-verified with Triple Whale',target:'Maintain ROAS at or above 3.00x, measured monthly'},
+   {kra:'ZipCovers paid search scale',weightage:15,kpi:'Revenue trajectory, spend and cost per new customer',target:'Grow paid-search revenue toward $10,000/day; report ROAS trend monthly'},
+   {kra:'Budget discipline & pacing',weightage:10,kpi:'Daily spend against approved caps; unapproved changes',target:'100% adherence to approved daily caps; zero unapproved budget or bid-strategy changes'},
+   {kra:'Wasted spend control',weightage:9,kpi:'Spend on zero-conversion search terms; negative-keyword coverage',target:'Zero-conversion spend ≤10% of total; negative-keyword review monthly'},
+   {kra:'Non-brand ad rank & impression share',weightage:8,kpi:'Search Lost IS (Rank) on non-brand campaigns',target:'Improve non-brand impression share by 15 percentage points'},
+   {kra:'Paid ads contribution',weightage:3,kpi:'Spend, revenue and ROAS across all channel accounts',target:'35% revenue other than Google at ROAS ≥ 2.85'},
+   {kra:'Marketplace contribution',weightage:3,kpi:'Etsy + Wayfair + Amazon',target:'15% revenue from other than paid at ROAS ≥ 5.00x'},
+   {kra:'Change governance',weightage:4,kpi:'Material channel changes logged to the Decision Log before execution',target:'100% logged with hypothesis and success criteria'}],
+  comps:comps({Teamwork:[7,'Ownership & Accountability','Proactive escalation of deterioration; ownership of root cause','Surfaces ROAS, spend and pacing deterioration before being asked'],Communication:[9,'Team Leadership & Development','Cadence and quality of management across the channel team','Documented monthly one-to-one with each direct report; agreed measurable targets'],Ownership:[4,'Communication & Reporting Quality','Timeliness, accuracy and clarity of reporting','Consolidated channel reporting on schedule, every figure traceable']}),contribs:contribs()},
+ {id:'email',name:'Email Marketing — Executive',team:'Marketing – Lifecycle',kras:[
+   {kra:'Campaign build & send execution',weightage:18,kpi:'Campaigns built, QA’d and sent on the agreed calendar',target:'100% of scheduled campaigns sent on date; zero sends with a broken link, wrong segment or rendering fault'},
+   {kra:'Email quality & rendering',weightage:14,kpi:'Pre-send QA pass rate across clients, mobile and dark mode',target:'Every campaign passes the pre-send QA checklist; zero post-send corrections'},
+   {kra:'Flow maintenance & testing',weightage:12,kpi:'Flows kept live and tested; A/B tests concluded',target:'15 flow updates per month; 4–8 tests per quarter with a written read-out'},
+   {kra:'Engagement performance',weightage:10,kpi:'Open, click and click-to-open rate against baseline',target:'Maintain or improve against baseline; investigate any month 38% below'},
+   {kra:'Segmentation & suppression accuracy',weightage:10,kpi:'Correctness of audience and suppression per send',target:'Zero sends to an incorrect or unsuppressed segment'},
+   {kra:'Reporting turnaround',weightage:6,kpi:'Post-send reporting after each campaign',target:'Read-out within 2 working days of every send'}],
+  comps:comps({Ownership:[8,'Ownership & Accountability','Ownership of send quality and errors found','Owns and reports own errors immediately; never repeats a fault'],'Problem-solving':[5,'Adaptability & Learning','Growth across Klaviyo, copy and design','Takes on 2 new capability areas with demonstrated output'],Discipline:[7,'Discipline & Professionalism','Adherence to process, checklists and calendar','Follows the pre-send checklist and calendar without exception']}),contribs:contribs()},
+ {id:'etsy',name:'Etsy Marketplace — Coordinator',team:'Marketing – Marketplaces',kras:[
+   {kra:'Etsy revenue delivery',weightage:18,kpi:'Etsy net revenue for the period',target:'Deliver ₹7,50,000 Etsy net revenue in the period'},
+   {kra:'Listing coverage & optimisation',weightage:0,kpi:'Active listings; quality across titles, tags, images, attributes',target:'Maintain 50–65 active listings; top 25 revenue listings fully optimised quarterly'}],
+  comps:comps({Teamwork:[7,'Ownership & Accountability','Proactive escalation','Surfaces deterioration before being asked'],Communication:[9,'Communication & Reporting','Reporting quality','Reports on schedule'],Ownership:[4,'Ownership','Own outcomes','Owns the diagnosis through to a fix']}),contribs:contribs()},
+];
+
+let pid=0;
+function P(name,dept,designation,manager,status,tpl,extra){ pid++; return Object.assign({id:'INCOR'+(50+pid),name,dept,designation,manager,status,template:tpl,email:name.split(' ')[0].toLowerCase()+'@cozycornerpatios.com',isManager:false,isCeo:false,locked:false,last:'—',selfScore:null,mgrScore:null,hrRating:null,daysWaiting:0,log:['Prepared by Asha · 6 Sep']},extra||{}); }
+const PEOPLE = [
+ P('Priyesh Sir','Leadership','CEO','—','Draft',null,{isCeo:true,isManager:true}),
+ P('Samarth Sawhney','Marketing','CMO','Priyesh Sir','Sent','paid',{isManager:true,last:'Invited 7 Sep',log:['Prepared 6 Sep','Invitation sent 7 Sep']}),
+ P('Vivek Singh','Marketing','Sr. Manager – Performance Marketing','Samarth Sawhney','In Progress','paid',{isManager:true,last:'Saved 2 h ago',log:['Invitation sent 7 Sep','Opened 7 Sep','Step 6 of 12 saved']}),
+ P('Arvind Kumar','Marketing','Marketing Manager','Samarth Sawhney','In Progress','paid',{isManager:true,last:'Saved yesterday'}),
+ P('Nitin Yadav','Marketing','Sales & Marketing Manager','Samarth Sawhney','Submitted','paid',{isManager:true,last:'Submitted 7 Sep',selfScore:3.9,daysWaiting:1}),
+ P('Bhanu Pratap','Marketing','Associate Manager – SEO','Vivek Singh','Submitted','seo',{last:'Submitted 7 Sep 18:42',selfScore:4.12,daysWaiting:1,log:['Invitation sent 7 Sep','Opened 7 Sep 09:10','Submitted 7 Sep 18:42','Email to Vivek Singh sent']}),
+ P('Neha Kapoor','Marketing','Paid Social Executive','Vivek Singh','In Progress','paid',{last:'Saved 40 min ago'}),
+ P('Rohit Verma','Marketing','Performance Analyst','Vivek Singh','Sent','paid',{last:'Not opened',locked:false}),
+ P('Shubham Jain','Marketing','Digital Marketing Coordinator','Arvind Kumar','Manager Review','etsy',{last:'With manager 3 d',selfScore:3.55,daysWaiting:3}),
+ P('Ambrish Rai','Marketing','Sales & Marketing Executive','Nitin Yadav','Manager Submitted','email',{last:'Manager done 8 Sep',selfScore:3.7,mgrScore:3.4}),
+ P('Kavya Menon','Marketing','Content Writer','Arvind Kumar','Sent','seo',{last:'Not opened',locked:true,log:['Invitation sent 7 Sep','5 failed password attempts — locked 8 Sep 10:02']}),
+ P('Sahil Vikas','Tech','Engineering Lead','Priyesh Sir','Submitted',null,{isManager:true,last:'Submitted 8 Sep',selfScore:4.3}),
+ P('Priyanshi Gupta','Tech','Developer','Sahil Vikas','Submitted',null,{last:'Submitted 7 Sep',selfScore:3.8,daysWaiting:2}),
+ P('Harshit Singh','Tech','Developer','Sahil Vikas','In Progress',null,{last:'Saved 1 h ago'}),
+ P('Vinay Kumar','Tech','Intern','Sahil Vikas','Sent',null,{last:'Opened, not started'}),
+ P('Marcel Dsouza','Operations','Operations Manager','Priyesh Sir','Calibrated',null,{isManager:true,selfScore:4.0,mgrScore:4.1,hrRating:4,last:'Calibrated 8 Sep'}),
+ P('Damini Shah','Operations','Ops Coordinator','Marcel Dsouza','Manager Submitted',null,{selfScore:3.2,mgrScore:3.5,last:'Manager done 8 Sep'}),
+ P('Aditi Rao','Operations','Ops Coordinator','Marcel Dsouza','Manager Review',null,{selfScore:3.6,daysWaiting:4,last:'With manager 4 d'}),
+ P('Mohit Sharma','Customer Support','Support Lead','Priyesh Sir','Final Approved',null,{isManager:true,selfScore:3.9,mgrScore:3.8,hrRating:4,last:'Approved 8 Sep'}),
+ P('Sandeep Kumar','Customer Support','Support Agent','Mohit Sharma','Closed',null,{selfScore:3.4,mgrScore:3.4,hrRating:3,last:'Closed 8 Sep'}),
+ P('Thoshal Reddy','Customer Support','Support Agent','Mohit Sharma','Draft',null,{last:'No template yet'}),
+ P('Kiran Rao','Customer Support','Support Agent','Mohit Sharma','Ready',null,{last:'Ready to send'}),
+ P('Surendra Nair','Accounts','Accounts Manager','Priyesh Sir','Sent',null,{isManager:true,last:'Not opened'}),
+ P('Ayush Jain','Accounts','Accountant','Surendra Nair','Ready',null,{last:'Ready to send'}),
+];
+
+function blankForm(tpl, filled){
+  const f = {
+    kras: tpl.kras.filter(k=>k.weightage>0).map(k=>({...k,actual:'',self:null,evidence:'',mgr:null,mgrComment:''})),
+    comps: tpl.comps.map(c=>({...c,self:null,evidence:'',mgr:null,mgrComment:''})),
+    contribs: tpl.contribs.map(c=>({...c,contribution:'',impact:'',self:null,mgr:null})),
+    achievements: [1,2,3,4].map(()=>({what:'',impact:''})),
+    challenges: [1,2,3].map(()=>({area:'',what:'',action:'',support:''})),
+    goals: [1,2,3].map(()=>({area:'',action:'',outcome:''})),
+    overall: ['What are your three most significant contributions during the appraisal period?','What responsibilities or areas do you believe you handled particularly well?','What would you like to improve in the next appraisal cycle?','What additional responsibilities would you like to take up?','What support, resources or training would help you perform better?'].map(q=>({q,a:''})),
+    suggestions: [
+      {title:'Organisational gap',q1:'What gap or improvement opportunity have you observed?',q2:'What solution do you suggest?',q3:'What positive impact can it create?'},
+      {title:'Process inefficiency',q1:'What inefficiency, delay or recurring issue have you observed?',q2:'What practical improvement would you recommend?',q3:'How does it improve efficiency, quality or turnaround?'},
+      {title:'Team / cross-functional',q1:'What employee, team or cross-functional challenge have you observed?',q2:'What solution could address it?',q3:'What benefit would it bring?'},
+      {title:'Cost, errors, wastage',q1:'What opportunity exists to reduce cost, errors or wastage?',q2:'What change would you propose?',q3:'What measurable benefit could result?'},
+      {title:'Simplify / automate',q1:'What area could be simplified, standardised or automated?',q2:'What approach would you recommend?',q3:'What improvement would you expect?'},
+      {title:'One change',q1:'What one change would make the organisation or your function more effective?',q2:'What action would you recommend?',q3:'What outcome do you expect?'}].map(s=>({...s,a1:'',a2:'',a3:''})),
+    ahead: ['Top three outcomes you want to achieve in the next cycle','Additional responsibility or leadership opportunity you would like to take up','Skills, resources or organisational support that would enable greater impact','If given additional responsibility, what measurable value can you create?'].map(q=>({q,a:''})),
+    secRating:{kra:null,comp:null,add:null}, secComment:'', declName:'', declAccept:false,
+  };
+  if(filled){
+    const fills=[
+      ['Organic net revenue up 38% YoY across both brands (₹1.21 Cr → ₹1.67 Cr, GA4 channel table, Aug close). Sessions +44%.',4,'Monthly SEO deck, warehouse channel table rows 14–26; India/US split shown on every figure.'],
+      ['57 priority keywords now top 10 (target 50), 17 in top 3 (target 20). Verified on live SERP each month, screenshots in the tracker.',4,'Keyword tracker tab “Live SERP Aug”; 3 of the top-3 misses are brand-competitor terms.'],
+      ['Averaged 24 pages/month, 91% indexed within 30 days. Two months fell to 16 pages during the site migration.',3,'Publishing log; GSC coverage report exported monthly.'],
+      ['Zero critical issues open beyond 10 days since March. Schema coverage 94% on priority templates.',4,'Screaming Frog crawls weekly; CWV all green on mobile since June.'],
+      ['GEO baseline set in April (31 cited queries). Now 71 cited queries — +129%.',5,'GEO tracker sheet with monthly snapshots and prompt list.'],
+      ['Every report carried a country split. One figure (May sessions) had to be restated after a bot spike.',3,'Restatement note in the May deck; process note added.']];
+    f.kras.forEach((k,i)=>{k.actual=fills[i][0];k.self=fills[i][1];k.evidence=fills[i][2];});
+    f.comps.filter(c=>c.on).forEach((c,i)=>{c.self=[4,3,4][i];c.evidence=['Traced the June traffic dip to a canonical loop within a day and shipped the fix with dev.','Briefs for content team sometimes needed a second pass to be actionable.','Publishing and verification rules followed every month; reporting late once.'][i];});
+    f.contribs[0].contribution='Built the page-brief template and the indexing checker script.'; f.contribs[0].impact='Cut brief turnaround from 3 days to 1; caught 40+ unindexed pages.'; f.contribs[0].self=4;
+    f.achievements[0]={what:'GEO programme from zero to 71 cited queries',impact:'First measurable AI-search presence for both brands'};
+    f.achievements[1]={what:'Site migration with no organic revenue loss',impact:'Revenue held through a risky quarter'};
+    f.challenges[0]={area:'Content velocity',what:'Writer bandwidth dropped during migration',action:'Prioritised money pages; built brief template',support:'One more writer or a freelance budget'};
+    f.goals[0]={area:'Data / SQL',action:'Warehouse query training',outcome:'Own the channel tables without dev help'};
+    f.overall.forEach((q,i)=>q.a=['GEO programme, migration without loss, 57 keywords into top 10.','Technical health and reporting discipline.','Content velocity and brief clarity.','Lead SEO for a third brand if launched.','Analytics training and one more writer.'][i]);
+    f.ahead.forEach((q,i)=>q.a=['Organic revenue +40%, 30 keywords top 3, GEO citations 150.','Lead a small content pod.','SQL/warehouse access and training.','₹60L incremental organic revenue.'][i]);
+    f.secRating={kra:4,comp:4,add:4}; f.declName='Bhanu Pratap'; f.declAccept=true;
+  }
+  return f;
+}
+
+createApp({
+  data(){ return {
+    persona:'employee', device:'desktop',
+    cycle:{name:'2025 Performance Appraisal Cycle',revision:'2026 Salary Revision',effective:'1 Apr 2026',closure:'30 Sep 2026',ceo:'Priyesh Sir',wKra:70,wComp:20,wAdd:10,enforce:false,
+      selfStart:'4 Sep 2026',selfEnd:'12 Sep 2026',hrStart:'13 Sep 2026',hrEnd:'14 Sep 2026',mgrStart:'15 Sep 2026',mgrEnd:'19 Sep 2026',calStart:'20 Sep 2026',calEnd:'23 Sep 2026',faStart:'24 Sep 2026',faEnd:'25 Sep 2026',discStart:'26 Sep 2026',discEnd:'29 Sep 2026'},
+    windows:[{key:'self',label:'Self-appraisal'},{key:'hr',label:'HR review'},{key:'mgr',label:'Manager review'},{key:'cal',label:'Calibration'},{key:'fa',label:'Final approval'},{key:'disc',label:'Discussions & corrections'}],
+    templates:TEMPLATES, people:PEOPLE, statuses:STATUSES,
+    me:{name:'Bhanu Pratap',id:'INCOR101',email:'bhanu@cozycornerpatios.com',dept:'Marketing',designation:'Associate Manager – SEO',doj:'25 Feb 2025',manager:'Vivek Singh'},
+    form: blankForm(TEMPLATES[0], false),
+    steps:[{key:'details',label:'Your details'},{key:'kras',label:'KRAs and KPIs'},{key:'comps',label:'Competencies'},{key:'contrib',label:'Additional contribution'},{key:'ach',label:'Achievements'},{key:'chal',label:'Challenges'},{key:'goals',label:'Development goals'},{key:'overall',label:'Overall self-assessment'},{key:'sugg',label:'Organisational development',optional:true},{key:'ahead',label:'Looking ahead'},{key:'summary',label:'Rating summary'},{key:'decl',label:'Declaration'}],
+    emp:{screen:'login',pw:'',loginErr:'',attempts:0,step:0,showErr:false,resume:false},
+    dir:'slide', saving:false, savedAt:Date.now(), tick:Date.now(),
+    mgr:{tab:'team',open:null,overall:null,feedback:'',recs:''},
+    hr:{view:'dash',q:'',fDept:'',fStatus:'',fMgr:'',sel:[],sendDept:'',drawer:null,modal:null,reopenReason:'',tplOpen:null,cell:null,expDept:'',expStatus:''},
+    toasts:[], chart:null,
+  }},
+  computed:{
+    protoNote(){ return {employee:'You are Bhanu Pratap (SEO). Try a wrong password first.',manager:'You are Vivek Singh. Bhanu has submitted — review him.',hr:'You are Asha (HR). Everything is clickable; data resets on reload.'}[this.persona]; },
+    firstName(){ return this.me.name.split(' ')[0]; },
+    cur(){ return this.steps[this.emp.step].key; },
+    applicableComps(){ return this.form.comps.filter(c=>c.on); },
+    savedAgo(){ const s=Math.round((this.tick-this.savedAt)/1000); return s<5?'just now':s<60?s+'s ago':Math.round(s/60)+' min ago'; },
+    nowStr(){ return new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}); },
+    todayStr(){ return new Date().toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}); },
+    secAvg(){ const w=(rows,key)=>{let s=0,t=0;rows.forEach(r=>{if(r[key]&&r.weightage){s+=r[key]*r.weightage;t+=r.weightage;}});return t?s/t:0;};
+      const add=this.form.contribs.filter(c=>c.self); const addAvg=add.length?add.reduce((a,c)=>a+c.self,0)/add.length:0;
+      return {kra:w(this.form.kras,'self'),comp:w(this.applicableComps,'self'),add:addAvg}; },
+    selfScore(){ const a=this.secAvg,c=this.cycle; let s=0,t=0; if(a.kra){s+=a.kra*c.wKra;t+=c.wKra;} if(a.comp){s+=a.comp*c.wComp;t+=c.wComp;} if(a.add){s+=a.add*c.wAdd;t+=c.wAdd;} return t?s/t:0; },
+    overallSelf(){ const r=this.form.secRating,c=this.cycle; let s=0,t=0; if(r.kra){s+=r.kra*c.wKra;t+=c.wKra;} if(r.comp){s+=r.comp*c.wComp;t+=c.wComp;} if(r.add){s+=r.add*c.wAdd;t+=c.wAdd;} return t?s/t:0; },
+    ratedCount(){ return this.form.kras.filter(k=>k.self).length+this.applicableComps.filter(c=>c.self).length; },
+    rateableCount(){ return this.form.kras.length+this.applicableComps.length; },
+    nameMatches(){ return this.form.declName.trim().toLowerCase()===this.me.name.toLowerCase(); },
+    allValid(){ return this.steps.every((s,i)=>s.optional||s.key==='decl'||this.stepValid(i)); },
+    incompleteText(){ const bad=this.steps.filter((s,i)=>!s.optional&&s.key!=='decl'&&!this.stepValid(i)).map(s=>s.label); return 'Still incomplete: '+bad.join(', ')+'.'; },
+    mgrScore(){ const w=(rows,key)=>{let s=0,t=0;rows.forEach(r=>{if(r[key]&&r.weightage){s+=r[key]*r.weightage;t+=r.weightage;}});return t?s/t:0;}; const k=w(this.form.kras,'mgr'),c=this.applicableComps.length?w(this.applicableComps,'mgr'):0; let s=0,t=0; if(k){s+=k*this.cycle.wKra;t+=this.cycle.wKra;} if(c){s+=c*this.cycle.wComp;t+=this.cycle.wComp;} return t?s/t:0; },
+    mgrTotal(){ return this.form.kras.length+this.applicableComps.length; },
+    mgrProgress(){ return this.form.kras.filter(k=>k.mgr).length+this.applicableComps.filter(c=>c.mgr).length; },
+    mgrDone(){ return this.mgrProgress===this.mgrTotal; },
+    mgrCanSubmit(){ return this.mgrDone&&this.mgr.overall&&this.mgr.feedback.length>=30&&this.mgr.recs.length>=30; },
+    team(){ return this.people.filter(p=>p.manager==='Vivek Singh'); },
+    teamPending(){ return this.team.filter(t=>['Submitted','Manager Review'].includes(t.status)); },
+    // HR
+    hrViews(){ return [{key:'dash',label:'Dashboard'},{key:'cycle',label:'Cycle'},{key:'tpl',label:'KRA templates',count:this.templates.length},{key:'people',label:'People',count:this.people.length},{key:'send',label:'Send',count:this.people.filter(p=>['Ready','Draft'].includes(p.status)&&!p.isCeo).length},{key:'mon',label:'Monitor'},{key:'exp',label:'Export'}]; },
+    depts(){ return [...new Set(this.people.filter(p=>!p.isCeo).map(p=>p.dept))]; },
+    managers(){ return [...new Set(this.people.filter(p=>p.isManager).map(p=>p.name))]; },
+    shortStatuses(){ return ['Not sent','Sent','In Progress','Submitted','Manager Review','Manager Submitted','Calibrated+']; },
+    notSubmitted(){ return this.people.filter(p=>['Sent','In Progress'].includes(p.status)); },
+    notStarted(){ return this.people.filter(p=>p.status==='Sent'); },
+    overdueMgr(){ return this.people.filter(p=>['Submitted','Manager Review'].includes(p.status)&&p.daysWaiting>=3); },
+    pct(){ const scope=this.people.filter(p=>!p.isCeo); return Math.round(scope.filter(p=>this.statusIdx(p.status)>=this.statusIdx('Submitted')).length/scope.length*100); },
+    daysLeft(){ return 4; },
+    weightsOk(){ return this.cycle.wKra+this.cycle.wComp+this.cycle.wAdd===100; },
+    filteredPeople(){ const q=this.hr.q.toLowerCase(); return this.people.filter(p=>!p.isCeo&&(!q||p.name.toLowerCase().includes(q)||p.id.toLowerCase().includes(q))&&(!this.hr.fDept||p.dept===this.hr.fDept)&&(!this.hr.fStatus||p.status===this.hr.fStatus)&&(!this.hr.fMgr||p.manager===this.hr.fMgr)); },
+    sendable(){ return this.people.filter(p=>!p.isCeo&&(!this.hr.sendDept||p.dept===this.hr.sendDept)&&['Draft','Ready','Sent'].includes(p.status)); },
+    selMissingTpl(){ return this.people.filter(p=>this.hr.sel.includes(p.id)&&!p.template); },
+    previewPerson(){ return this.people.find(p=>this.hr.sel.includes(p.id))||this.sendable[0]; },
+  },
+  methods:{
+    ratingWord(n){ return RW[n]||''; }, initials(n){ return n.split(' ').map(x=>x[0]).slice(0,2).join(''); }, firstOf(n){ return n.split(' ')[0]; },
+    showToast(msg){ const id=Date.now()+Math.random(); this.toasts.push({id,msg}); setTimeout(()=>{this.toasts=this.toasts.filter(t=>t.id!==id);},2600); },
+    setPersona(p){ this.persona=p;
+      if(p==='employee'){ this.me={name:'Bhanu Pratap',id:'INCOR101',email:'bhanu@cozycornerpatios.com',dept:'Marketing',designation:'Associate Manager – SEO',doj:'25 Feb 2025',manager:'Vivek Singh'}; if(this.emp.screen==='mgr') this.emp.screen='login'; if(!this.emp.resume) this.form=blankForm(TEMPLATES[0],false); }
+      if(p==='manager'){ this.me={name:'Vivek Singh',id:'INCOR68',email:'vivek.singh@cozycornerpatios.com',dept:'Marketing',designation:'Sr. Manager – Performance Marketing',doj:'12 May 2025',manager:'Samarth Sawhney'}; this.emp.screen='mgr'; this.mgr.open=null; this.form=blankForm(TEMPLATES[0],true); }
+      if(p==='hr'){ this.$nextTick(()=>this.drawChart()); } },
+    login(){ if(this.emp.pw.length<4){ this.emp.attempts++; this.emp.loginErr=this.emp.attempts>=5?'This link is locked after 5 wrong attempts. HR has been notified and can unlock it.':'That password doesn’t match. '+(5-this.emp.attempts)+' attempt'+(5-this.emp.attempts===1?'':'s')+' left before the link locks.'; return; } this.emp.loginErr=''; this.emp.screen='welcome'; },
+    touch(){ this.saving=true; clearTimeout(this._t); this._t=setTimeout(()=>{this.saving=false;this.savedAt=Date.now();},700); },
+    stepValid(i){ const k=this.steps[i].key,f=this.form;
+      if(k==='details') return true;
+      if(k==='kras') return f.kras.every(x=>x.actual.length>=20&&x.self&&x.evidence.length>=30);
+      if(k==='comps') return this.applicableComps.every(c=>c.self&&c.evidence.length>=20);
+      if(k==='contrib') return f.contribs.every(c=>!(c.contribution||c.impact)||c.self);
+      if(k==='ach') return f.achievements.some(a=>a.what&&a.impact);
+      if(k==='chal') return f.challenges.some(c=>c.area&&c.what);
+      if(k==='goals') return f.goals.some(g=>g.area&&g.action);
+      if(k==='overall') return f.overall.every(q=>q.a.length>=20);
+      if(k==='sugg') return true;
+      if(k==='ahead') return f.ahead.every(q=>q.a.length>=10);
+      if(k==='summary') return !!(f.secRating.kra&&f.secRating.comp);
+      if(k==='decl') return this.nameMatches&&f.declAccept; return true; },
+    next(skip){ if(!skip&&!this.stepValid(this.emp.step)){ this.emp.showErr=true; this.showToast('A few things need filling in before you continue'); return; } this.emp.showErr=false; this.dir='slide'; this.emp.step=Math.min(this.emp.step+1,this.steps.length-1); this.touch(); this.emp.resume=true; window.scrollTo({top:0,behavior:'smooth'}); },
+    back(){ this.dir='slideback'; this.emp.showErr=false; this.emp.step=Math.max(0,this.emp.step-1); },
+    go(i){ this.dir=i>this.emp.step?'slide':'slideback'; this.emp.showErr=false; this.emp.step=i; },
+    submitForm(){ this.emp.screen='done'; const p=this.people.find(p=>p.name==='Bhanu Pratap'); if(p){p.status='Submitted';p.selfScore=this.overallSelf;} },
+    resetEmployee(){ this.form=blankForm(TEMPLATES[0],false); this.emp={screen:'login',pw:'',loginErr:'',attempts:0,step:0,showErr:false,resume:false}; },
+    // manager
+    openReview(t){ if(!['Submitted','Manager Review','Manager Submitted'].includes(t.status)){ this.showToast(t.name+' hasn’t submitted yet'); return; } this.mgr.open=t; this.form=blankForm(TEMPLATES[0],true); },
+    gapText(k){ const g=k.mgr-k.self; return g===0?'matches self rating':(g>0?'+':'')+g+' vs self'; },
+    submitReview(){ const p=this.people.find(p=>p.name===this.mgr.open.name); if(p){p.status='Manager Submitted';p.mgrScore=this.mgrScore;} this.showToast('Review sent to HR'); this.mgr.open=null; },
+    // hr
+    count(s){ return this.people.filter(p=>!p.isCeo&&p.status===s).length; },
+    statusIdx(s){ return STATUSES.indexOf(s); },
+    statusChip(s){ return {'Draft':'','Ready':'','Sent':'gold','In Progress':'gold','Submitted':'sky','Manager Review':'sky','Manager Submitted':'moss','Calibrated':'moss','Final Approved':'moss','Discussed':'moss','Closed':'ink'}[s]||''; },
+    cellList(d,s){ return this.people.filter(p=>!p.isCeo&&p.dept===d&&(s==='Not sent'?['Draft','Ready'].includes(p.status):s==='Calibrated+'?this.statusIdx(p.status)>=this.statusIdx('Calibrated'):p.status===s)); },
+    cell(d,s){ return this.cellList(d,s).length; },
+    heat(n){ return n===0?'h0':n===1?'h1':n===2?'h2':n<=3?'h3':'h4'; },
+    openCell(d,s){ this.hr.cell={dept:d,status:s,list:this.cellList(d,s)}; this.hr.modal='cell'; },
+    stageHint(s){ return {'Sent':'Link and password emailed','In Progress':'Employee has opened and saved','Submitted':'Locked for the employee; HR checks completeness','Manager Review':'With the reporting manager','Manager Submitted':'Ratings and feedback in; HR calibrates','Calibrated':'HR final rating recorded','Final Approved':'Leadership sign-off recorded','Discussed':'Manager has met the employee','Closed':'Filed'}[s]; },
+    advance(p,s){ p.status=s; p.log.push(s+' · today by Asha'); this.showToast(p.name+' → '+s); },
+    reopen(){ const p=this.hr.drawer; p.status=p.status==='Manager Submitted'?'Manager Review':'In Progress'; p.log.push('Reopened · '+this.hr.reopenReason); this.hr.modal=null; this.hr.reopenReason=''; this.showToast('Reopened and emailed'); },
+    sendReminders(){ this.showToast('Reminder sent to '+this.notSubmitted.length+' people'); },
+    toggleSel(p){ const i=this.hr.sel.indexOf(p.id); i>=0?this.hr.sel.splice(i,1):this.hr.sel.push(p.id); },
+    selectAllReady(){ this.hr.sel=this.sendable.filter(p=>p.status!=='Sent').map(p=>p.id); },
+    sendInvites(){ const n=this.hr.sel.length; this.people.forEach(p=>{ if(this.hr.sel.includes(p.id)){ p.status='Sent'; p.last='Invited just now'; p.log.push('Invitation sent · today'); } }); this.hr.sel=[]; this.showToast(n+' invitation'+(n===1?'':'s')+' sent'); },
+    tplKraSum(t){ return t.kras.reduce((a,k)=>a+(Number(k.weightage)||0),0); },
+    tplCompSum(t){ return t.comps.filter(c=>c.on).reduce((a,c)=>a+(Number(c.weightage)||0),0); },
+    tplWeightOk(t){ return this.tplKraSum(t)===this.cycle.wKra; },
+    newTemplate(){ const t={id:'t'+Date.now(),name:'',team:'',kras:[{kra:'',weightage:0,kpi:'',target:''}],comps:comps({}),contribs:contribs()}; this.templates.push(t); this.hr.tplOpen=t; },
+    duplicateTemplate(t){ const c=JSON.parse(JSON.stringify(t)); c.id='t'+Date.now(); c.name=t.name+' (copy)'; this.templates.push(c); this.hr.tplOpen=c; this.showToast('Duplicated'); },
+    exportCsv(kind){ const esc=v=>'"'+String(v??'').replace(/"/g,'""')+'"'; let rows=[];
+      const scope=this.people.filter(p=>!p.isCeo&&(!this.hr.expDept||p.dept===this.hr.expDept));
+      if(kind==='wide'){ rows.push(['employee_id','name','department','designation','reports_to','status','self_score','manager_score','hr_final_rating','last_activity']); scope.forEach(p=>rows.push([p.id,p.name,p.dept,p.designation,p.manager,p.status,p.selfScore??'',p.mgrScore??'',p.hrRating??'',p.last])); }
+      else { rows.push(['employee_id','name','kra_no','kra','weightage','kpi','target','actual_result','self_rating','manager_rating']); scope.forEach(p=>{const t=this.templates.find(t=>t.id===p.template); if(!t) return; t.kras.forEach((k,i)=>rows.push([p.id,p.name,i+1,k.kra,k.weightage,k.kpi,k.target,'','','']));}); }
+      const csv=rows.map(r=>r.map(esc).join(',')).join('\n'); const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'})); a.download='appraisal_'+kind+'.csv'; a.click(); this.showToast('CSV downloaded — '+(rows.length-1)+' rows'); },
+    drawChart(){ const el=document.getElementById('chart'); if(!el) return; if(this.chart) this.chart.destroy();
+      this.chart=new Chart(el,{type:'bar',data:{labels:['4 Sep','5 Sep','6 Sep','7 Sep','8 Sep','9 Sep','10 Sep','11 Sep','12 Sep'],datasets:[{data:[0,0,1,4,3,0,0,0,0],backgroundColor:['#BDD5DD','#BDD5DD','#0F4C5C','#0F4C5C','#0F4C5C','#E3E8EC','#E3E8EC','#E3E8EC','#E3E8EC'],borderRadius:4}]},options:{plugins:{legend:{display:false}},scales:{x:{grid:{display:false},ticks:{font:{size:11}}},y:{beginAtZero:true,ticks:{stepSize:2,font:{size:11}},grid:{color:'#E8ECEF'}}},animation:{duration:600}}}); },
+  },
+  watch:{ 'hr.view'(v){ if(v==='dash') this.$nextTick(()=>this.drawChart()); } },
+  mounted(){ setInterval(()=>{this.tick=Date.now();},5000); }
+}).mount('#app');
+</script>
+</body></html>

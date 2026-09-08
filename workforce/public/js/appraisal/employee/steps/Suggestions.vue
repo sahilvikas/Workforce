@@ -9,7 +9,7 @@
 			</p>
 		</div>
 
-		<div class="rows">
+		<div class="rows cols">
 			<div v-for="(card, i) in cards" :key="card.key" class="rowcard">
 				<div class="idx">{{ card.title }}</div>
 				<div class="grid3">

@@ -6,7 +6,7 @@
 			<p>Skills you want to build and what you need to build them.</p>
 		</div>
 
-		<div class="rows">
+		<div class="rows cols">
 			<div v-for="(g, i) in rows" :key="i" class="rowcard">
 				<div class="idx">Goal {{ i + 1 }}</div>
 				<div class="grid3">

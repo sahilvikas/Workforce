@@ -6,13 +6,12 @@
 			<p>This becomes the starting point for next year’s KRAs.</p>
 		</div>
 
-		<div class="rows">
+		<div class="rows narrow">
 			<div v-for="q in questions" :key="q.key" class="rowcard">
 				<TextArea
 					v-model="answers[q.key]"
 					:label="q.q"
-					:min="10"
-					:invalid="state.showErr && len(answers[q.key]) < 10"
+					:invalid="state.showErr && !len(answers[q.key])"
 				/>
 			</div>
 		</div>

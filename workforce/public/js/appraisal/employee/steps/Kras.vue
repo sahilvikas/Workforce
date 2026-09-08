@@ -11,7 +11,7 @@
 
 		<p v-if="!defs.length" class="muted">No KRAs are set on your form. Continue to the next section.</p>
 
-		<div v-for="(k, i) in defs" :key="i" class="kra">
+		<div v-for="(k, i) in defs" :key="i" class="kra split">
 			<div class="def">
 				<h3>
 					{{ i + 1 }}. {{ k.kra }}
@@ -27,8 +27,7 @@
 					v-model="rows[i].actual"
 					label="Actual achievement / result"
 					placeholder="What you delivered against the target, with figures where you have them."
-					:min="20"
-					:invalid="state.showErr && len(rows[i].actual) < 20"
+					:invalid="state.showErr && !len(rows[i].actual)"
 				/>
 				<div class="field">
 					<label :id="'kra-r-' + i">Self rating</label>
@@ -43,8 +42,7 @@
 					v-model="rows[i].evidence"
 					label="Comments / evidence"
 					placeholder="Reports, dashboards, dates, links — anything your manager can check."
-					:min="30"
-					:invalid="state.showErr && len(rows[i].evidence) < 30"
+					:invalid="state.showErr && !len(rows[i].evidence)"
 				/>
 			</div>
 		</div>

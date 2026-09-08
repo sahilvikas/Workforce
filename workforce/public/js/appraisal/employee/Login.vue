@@ -62,7 +62,7 @@ export default {
 		overlay: { type: Boolean, default: false },
 		message: { type: String, default: '' },
 	},
-	emits: ['locked'],
+	emits: ['locked', 'ok'],
 	data() {
 		return {
 			state: state,
@@ -98,10 +98,12 @@ export default {
 			this.busy = true;
 			this.error = '';
 			this.attemptsLeft = null;
+			const wasOverlay = this.overlay;
 			const r = await login(this.password);
 			this.busy = false;
 			if (r && r.ok) {
 				this.password = '';
+				this.$emit('ok', { payload: r, overlay: wasOverlay });
 				return;
 			}
 			this.error = (r && r.message) || '';

@@ -1,6 +1,6 @@
 <template>
-	<div v-if="state.screen === 'print' || state.screen === 'readonly'">
-		<PrintView :can-go-back="state.screen === 'print'" @back="state.screen = 'done'" />
+	<div v-if="state.screen === 'print'">
+		<PrintView @back="state.screen = 'app'" />
 	</div>
 
 	<div v-else class="emp">
@@ -9,23 +9,15 @@
 				<i aria-hidden="true"></i><span class="brandlong">Cozy Corner Patios ·&nbsp;</span>Appraisal
 			</div>
 			<div class="row">
-				<div
-					v-if="state.screen === 'wizard'"
-					class="saved"
-					:class="saveClass"
-					role="status"
-					aria-live="polite"
-				>
-					<span class="dot" aria-hidden="true"></span><span class="txt">{{ saveText }}</span>
+				<div v-if="indicator" class="saved" :class="indicatorClass" role="status" aria-live="polite">
+					<span class="dot" aria-hidden="true"></span><span class="txt">{{ indicator }}</span>
 				</div>
-				<Chip v-if="state.header.employee_name && state.screen !== 'login'">
-					{{ state.header.employee_name }}
-				</Chip>
+				<Chip v-if="displayName && state.screen !== 'login'">{{ displayName }}</Chip>
 			</div>
 		</header>
 
-		<!-- boot / loading -->
-		<div v-if="state.screen === 'boot' || state.loading" class="screen" aria-busy="true">
+		<!-- boot -->
+		<div v-if="state.screen === 'boot'" class="screen" aria-busy="true">
 			<div class="card">
 				<Skeleton width="180px" height="20px" />
 				<Skeleton width="100%" height="14px" mt="16px" />
@@ -37,7 +29,6 @@
 
 		<NoLink v-else-if="state.screen === 'nolink'" />
 		<Locked v-else-if="state.screen === 'locked'" :message="lockedMessage" />
-		<Closed v-else-if="state.screen === 'closed'" />
 
 		<div v-else-if="state.screen === 'error'" class="screen">
 			<div class="card">
@@ -47,14 +38,15 @@
 			</div>
 		</div>
 
-		<Login v-else-if="state.screen === 'login'" @locked="onLocked" />
-		<Welcome v-else-if="state.screen === 'welcome'" @start="start" />
-		<Wizard v-else-if="state.screen === 'wizard'" />
-		<Done v-else-if="state.screen === 'done'" @print="state.screen = 'print'" />
+		<Login v-else-if="state.screen === 'login'" @locked="onLocked" @ok="afterLogin" />
+
+		<!-- the app proper: manager shell, or the employee flow on its own -->
+		<ManagerArea v-else-if="state.door === 'team'" @print="state.screen = 'print'" />
+		<EmployeeArea v-else @print="state.screen = 'print'" />
 
 		<!-- session expired: the draft stays in memory behind this -->
 		<div v-if="state.loginOverlay" class="modal-bg">
-			<Login overlay :message="state.loginMessage" @locked="onLocked" />
+			<Login overlay :message="state.loginMessage" @locked="onLocked" @ok="afterLogin" />
 		</div>
 
 		<Toast />
@@ -62,7 +54,19 @@
 </template>
 
 <script>
-import { state, install, loadForm, saveLabel, settleSaves, toast, goToStep } from './store.js';
+import {
+	state,
+	install,
+	loadForm,
+	applyDoor,
+	landingTab,
+	rememberTab,
+	saveLabel,
+	saveClass,
+	settleSaves,
+	toast,
+} from './store.js';
+import { review, loadTeam, settleReview, flushReview } from './review.js';
 
 import Chip from './ui/Chip.vue';
 import Button from './ui/Button.vue';
@@ -70,13 +74,11 @@ import Skeleton from './ui/Skeleton.vue';
 import Toast from './ui/Toast.vue';
 
 import Login from './employee/Login.vue';
-import Welcome from './employee/Welcome.vue';
-import Wizard from './employee/Wizard.vue';
-import Done from './employee/Done.vue';
+import EmployeeArea from './employee/EmployeeArea.vue';
 import PrintView from './employee/PrintView.vue';
 import NoLink from './employee/NoLink.vue';
 import Locked from './employee/Locked.vue';
-import Closed from './employee/Closed.vue';
+import ManagerArea from './manager/ManagerArea.vue';
 
 const STALE_AFTER = 20 * 60 * 1000;
 
@@ -84,28 +86,33 @@ export default {
 	name: 'AppraisalApp',
 	components: {
 		Chip, Button, Skeleton, Toast,
-		Login, Welcome, Wizard, Done, PrintView, NoLink, Locked, Closed,
+		Login, EmployeeArea, PrintView, NoLink, Locked, ManagerArea,
 	},
 	data() {
 		return {
 			state: state,
-			// Manager and HR live behind this switch; they arrive in a later prompt.
-			door: 'employee',
+			review: review,
 			lockedMessage: '',
 			hiddenSince: 0,
 			buildChecked: false,
 		};
 	},
 	computed: {
-		saveText() {
-			return saveLabel();
+		// Whichever form is in front of the person is the one whose save state matters.
+		reviewing() {
+			return state.door === 'team' && state.tab === 'team' && !!review.open;
 		},
-		saveClass() {
-			return {
-				saving: state.saveState === 'saving',
-				retrying: state.saveState === 'retrying',
-				stopped: state.saveState === 'stopped',
-			};
+		indicator() {
+			if (state.screen !== 'app') return '';
+			if (this.reviewing) return review.loaded ? saveLabel(review) : '';
+			if (state.tab === 'team' && state.door === 'team') return '';
+			return state.empScreen === 'wizard' ? saveLabel(state) : '';
+		},
+		indicatorClass() {
+			return saveClass(this.reviewing ? review : state);
+		},
+		displayName() {
+			return state.header.employee_name || review.managerName || '';
 		},
 	},
 	created() {
@@ -125,27 +132,62 @@ export default {
 				state.screen = 'login';
 				return;
 			}
-			// A stored session means a reload: go back where they were.
-			const r = await loadForm({ resume: true });
-			if (r && !r.ok && state.loginOverlay) {
+			// A stored session means a reload: work out the door from the server
+			// rather than trusting anything cached in the browser.
+			const t = await loadTeam();
+			if (state.loginOverlay) {
 				state.loginOverlay = false;
 				state.screen = 'login';
+				return;
 			}
+			if (t && t.ok) {
+				applyDoor({ is_manager: 1, has_own_form: t.has_own_form });
+				if (state.hasOwnForm) await loadForm({ resume: true });
+				rememberTab(landingTab());
+				state.screen = 'app';
+				return;
+			}
+			if (t && t.reason === 'not_manager') {
+				applyDoor({ is_manager: 0, is_ceo: 0 });
+				const r = await loadForm({ resume: true });
+				state.screen = r && r.ok ? 'app' : 'error';
+				return;
+			}
+			state.loadError = (t && t.message) || '';
+			state.screen = 'error';
 		},
+
+		// After a password is accepted we already know the door from the payload.
+		async afterLogin(e) {
+			const r = (e && e.payload) || {};
+			if (e && e.overlay) {
+				// Nothing to route: the person is back where they were. Push whatever
+				// was typed while the session was dead.
+				flushReview();
+				return;
+			}
+			applyDoor({ status: r.status, is_manager: r.is_manager, is_ceo: r.is_ceo });
+			if (state.door === 'team') {
+				rememberTab(landingTab());
+				state.screen = 'app';
+				loadTeam();
+				return;
+			}
+			const form = await loadForm({ resume: !!r.has_draft });
+			state.screen = form && form.ok ? 'app' : 'error';
+		},
+
 		retry() {
 			state.screen = 'boot';
 			this.boot();
 		},
-		start(index) {
-			goToStep(index || 0);
-			state.screen = 'wizard';
-			window.scrollTo({ top: 0, behavior: 'auto' });
-		},
+
 		onLocked(message) {
 			this.lockedMessage = message || '';
 			state.loginOverlay = false;
 			state.screen = 'locked';
 		},
+
 		onVisibility() {
 			if (document.visibilityState === 'hidden') {
 				this.hiddenSince = Date.now();
@@ -156,6 +198,7 @@ export default {
 			}
 			this.hiddenSince = 0;
 		},
+
 		// The page carries the bundle hash in a meta tag; if the deployed page now
 		// carries a different one, offer a reload rather than taking one.
 		async checkBuild() {
@@ -175,6 +218,7 @@ export default {
 			if (!m || !m[1] || m[1] === mine) return;
 			this.buildChecked = true;
 			await settleSaves();
+			await settleReview();
 			toast('A new version is ready — reload when convenient', {
 				label: 'Reload',
 				run: function () {

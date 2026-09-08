@@ -6,7 +6,7 @@
 			<p>Up to four. At least one. The impact column is what leadership reads first.</p>
 		</div>
 
-		<div class="rows">
+		<div class="rows cols">
 			<div v-for="(a, i) in rows" :key="i" class="rowcard">
 				<div class="idx">Achievement {{ i + 1 }}</div>
 				<div class="grid2">

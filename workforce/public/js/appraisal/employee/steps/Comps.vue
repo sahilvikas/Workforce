@@ -8,7 +8,7 @@
 
 		<p v-if="!defs.length" class="muted">No competencies are set on your form. Continue to the next section.</p>
 
-		<div v-for="(c, i) in defs" :key="i" class="kra">
+		<div v-for="(c, i) in defs" :key="i" class="kra split">
 			<div class="def">
 				<h3>
 					{{ c.competency }}
@@ -34,8 +34,7 @@
 					v-model="rows[i].evidence"
 					label="Examples / evidence"
 					placeholder="One or two concrete moments from the year."
-					:min="20"
-					:invalid="state.showErr && len(rows[i].evidence) < 20"
+					:invalid="state.showErr && !len(rows[i].evidence)"
 				/>
 			</div>
 		</div>

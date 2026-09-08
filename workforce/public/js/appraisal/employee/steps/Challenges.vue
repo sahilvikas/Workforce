@@ -6,7 +6,7 @@
 			<p>Honest answers here are read as maturity, not weakness. At least one.</p>
 		</div>
 
-		<div class="rows">
+		<div class="rows cols">
 			<div v-for="(c, i) in rows" :key="i" class="rowcard">
 				<div class="idx">Challenge {{ i + 1 }}</div>
 				<div class="grid2">

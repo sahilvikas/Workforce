@@ -3,6 +3,7 @@
 		<label :for="fieldId">{{ label }}</label>
 		<textarea
 			:id="fieldId"
+			ref="ta"
 			class="input"
 			:class="{ err: showError }"
 			:value="modelValue"
@@ -10,12 +11,9 @@
 			:rows="rows"
 			:disabled="disabled"
 			:aria-invalid="showError ? 'true' : null"
-			:aria-describedby="min ? fieldId + '-c' : null"
-			@input="$emit('update:modelValue', $event.target.value)"
+			@input="onInput"
 		></textarea>
-		<div v-if="min" :id="fieldId + '-c'" class="counter" :class="{ ok: length >= min }">
-			{{ length }} / {{ min }} min
-		</div>
+		<div v-if="count && length" class="counter">{{ length }} characters</div>
 		<div v-if="error" class="err-text">{{ error }}</div>
 	</div>
 </template>
@@ -29,11 +27,12 @@ export default {
 		label: { type: String, default: '' },
 		modelValue: { type: String, default: '' },
 		placeholder: { type: String, default: '' },
-		min: { type: Number, default: 0 },
 		rows: { type: Number, default: 3 },
 		invalid: { type: Boolean, default: false },
 		error: { type: String, default: '' },
 		disabled: { type: Boolean, default: false },
+		// Plain character count, no target. Off by default.
+		count: { type: Boolean, default: false },
 	},
 	emits: ['update:modelValue'],
 	data() {
@@ -41,10 +40,32 @@ export default {
 	},
 	computed: {
 		length() {
-			return String(this.modelValue || '').trim().length;
+			return String(this.modelValue || '').length;
 		},
 		showError() {
 			return this.invalid || !!this.error;
+		},
+	},
+	watch: {
+		// Grow when the value arrives from a loaded draft, not only when typed.
+		modelValue() {
+			this.$nextTick(this.grow);
+		},
+	},
+	mounted() {
+		this.grow();
+	},
+	methods: {
+		onInput(e) {
+			this.$emit('update:modelValue', e.target.value);
+			this.grow();
+		},
+		// CSS caps the height at 60vh and turns on the inner scrollbar there.
+		grow() {
+			const el = this.$refs.ta;
+			if (!el) return;
+			el.style.height = 'auto';
+			el.style.height = el.scrollHeight + 'px';
 		},
 	},
 };

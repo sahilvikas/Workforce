@@ -6,13 +6,12 @@
 			<p>Five questions. A few sentences each.</p>
 		</div>
 
-		<div class="rows">
+		<div class="rows narrow">
 			<div v-for="q in questions" :key="q.key" class="rowcard">
 				<TextArea
 					v-model="answers[q.key]"
 					:label="q.q"
-					:min="20"
-					:invalid="state.showErr && len(answers[q.key]) < 20"
+					:invalid="state.showErr && !len(answers[q.key])"
 				/>
 			</div>
 		</div>

@@ -8,7 +8,7 @@
 
 		<p v-if="!defs.length" class="muted">No additional contribution areas are set on your form. Continue to the next section.</p>
 
-		<div v-for="(c, i) in defs" :key="i" class="kra">
+		<div v-for="(c, i) in defs" :key="i" class="kra split">
 			<div class="def">
 				<h3>
 					{{ c.area }}

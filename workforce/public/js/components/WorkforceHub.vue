@@ -52,20 +52,26 @@ export default {
 		return {
 			activeTab: 'jobs',
 			userRoles: [],
-			// Tab visibility by role. 'System Manager' is added everywhere as an admin fallback.
-			// HR Manager  = WF HR Manager (Asha)         — full recruitment workspace
-			// Leadership  = WF Leadership (Priyesh)      — final approvals + oversight of Jobs/Requisitions
-			// CMO         = WF CMO (Samarth)             — first-stage approvals for his own team only
-			// Hiring Mgr  = WF Hiring Manager            — raises + tracks his requisitions only
-			// Recruiter   = WF Recruitment Coordinator   — works the pipeline: Jobs, Candidates, Interviews, Talent
+			// Tab visibility by role. 'WF Admin' is the admin fallback — NOT
+			// 'System Manager'. Sixteen people hold System Manager for ERPNext
+			// admin work; they should not all get HR access here. The server
+			// scripts were swapped to match, so a System Manager without
+			// WF Admin is refused by the API as well as hidden from the tab.
+			//
+			// WF Admin    = Vamshi + Administrator        — full access, admin fallback
+			// HR Manager  = WF HR Manager (Asha)          — full recruitment workspace
+			// Leadership  = WF Leadership (Priyesh)       — approvals only, by request
+			// CMO         = WF CMO (Samarth)              — first-stage approvals for his own team
+			// Hiring Mgr  = WF Hiring Manager             — raises + tracks his requisitions only
+			// Recruiter   = WF Recruitment Coordinator    — works the pipeline: Jobs, Candidates, Interviews, Talent
 			allTabs: [
-				{ key: 'jobs',          label: 'Jobs',           icon: '📋', roles: ['System Manager', 'WF HR Manager', 'WF Leadership', 'WF Recruitment Coordinator'] },
-				{ key: 'requisitions',  label: 'Requisitions',   icon: '📝', roles: ['System Manager', 'WF HR Manager', 'WF Leadership', 'WF Hiring Manager'] },
-				{ key: 'approvals',     label: 'Approvals',      icon: '✅', roles: ['System Manager', 'WF Leadership'] },
-				{ key: 'cmo-approvals', label: 'CMO Approvals',  icon: '🛡️', roles: ['System Manager', 'WF CMO'] },
-				{ key: 'candidates',    label: 'Candidates',     icon: '👥', roles: ['System Manager', 'WF HR Manager', 'WF Recruitment Coordinator'] },
-				{ key: 'interviews',    label: 'Interviews',     icon: '🗓️', roles: ['System Manager', 'WF HR Manager', 'WF Recruitment Coordinator'] },
-				{ key: 'talent',        label: 'Talent Search',  icon: '🔍', roles: ['System Manager', 'WF HR Manager', 'WF Recruitment Coordinator'] }
+				{ key: 'jobs',          label: 'Jobs',           icon: '📋', roles: ['WF Admin', 'WF HR Manager', 'WF Recruitment Coordinator'] },
+				{ key: 'requisitions',  label: 'Requisitions',   icon: '📝', roles: ['WF Admin', 'WF HR Manager', 'WF Hiring Manager'] },
+				{ key: 'approvals',     label: 'Approvals',      icon: '✅', roles: ['WF Admin', 'WF Leadership'] },
+				{ key: 'cmo-approvals', label: 'CMO Approvals',  icon: '🛡️', roles: ['WF Admin', 'WF CMO'] },
+				{ key: 'candidates',    label: 'Candidates',     icon: '👥', roles: ['WF Admin', 'WF HR Manager', 'WF Recruitment Coordinator'] },
+				{ key: 'interviews',    label: 'Interviews',     icon: '🗓️', roles: ['WF Admin', 'WF HR Manager', 'WF Recruitment Coordinator'] },
+				{ key: 'talent',        label: 'Talent Search',  icon: '🔍', roles: ['WF Admin', 'WF HR Manager', 'WF Recruitment Coordinator'] }
 			]
 		};
 	},

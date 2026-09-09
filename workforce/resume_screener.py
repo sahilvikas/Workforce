@@ -17,6 +17,12 @@
 #
 # NOTE: this is repo Python, NOT a Server Script. frappe.make_post_request only
 # exists in the safe_exec sandbox — here we use the requests library directly.
+#
+# ---------------------------------------------------------------------------
+# 9 Sep 2026 — ONLY CHANGE IN THIS VERSION: @frappe.whitelist() added to
+# run_resume_screening (see the comment above that function). Nothing else
+# in this file has been modified.
+# ---------------------------------------------------------------------------
 
 import json
 
@@ -32,8 +38,18 @@ AZURE_RESOURCE = "https://zip-cushions-resource.cognitiveservices.azure.com"
 AZURE_API_VERSION = "2024-12-01-preview"
 
 
+# WHY THE DECORATOR:
+#   Scheduling now lives in the Server Script "wf resume screening cron"
+#   (Scheduler Event, */3 * * * *), because migrate kept losing the hooks.py
+#   registration. A Server Script runs inside safe_exec, and BOTH routes out
+#   of that sandbox — frappe.call() and frappe.enqueue() — go through
+#   frappe.utils.safe_exec.call_whitelisted_function, which runs
+#   is_whitelisted() on the target. Without this decorator the cron reports
+#   "Complete" (it queued fine) while the worker dies with PermissionError.
+#   That was the every-3-minutes failure in Error Log on 9 Sep.
+@frappe.whitelist()
 def run_resume_screening():
-    """Scheduler entry point. Registered in hooks.py (cron every few minutes)."""
+    """Scheduler entry point. Triggered by Server Script 'wf resume screening cron'."""
     settings_enabled = frappe.db.get_single_value("AI Verifier Settings", "enabled")
     if not settings_enabled:
         return

@@ -9,19 +9,24 @@
 #     after_request = ["workforce.appraisal_headers.no_store_appraisal_page"]
 #
 # hooks.py belongs to another developer's live work, so that one line is left
-# for its owner — see workforce/docs/APPRAISAL.md. Until it is added the page is
-# still never served from frappe's website cache (index.py sets no_cache = 1)
-# and carries no cache validators, so browsers refetch it; the header makes that
+# for its owner — see workforce/docs/APPRAISAL.md. Until it is added the pages are
+# still never served from frappe's website cache (each index.py sets no_cache = 1)
+# and carry no cache validators, so browsers refetch them; the header makes that
 # explicit for proxies too.
+#
+# Covers both /appraisal (guest) and /hr (logged in).
+
+
+PAGES = ("/appraisal", "/hr")
 
 
 def no_store_appraisal_page(response=None, request=None):
-	"""after_request hook: stop the /appraisal HTML from being cached anywhere."""
+	"""after_request hook: stop the appraisal HTML from being cached anywhere."""
 	if response is None or request is None:
 		return
 
 	path = (getattr(request, "path", "") or "").rstrip("/")
-	if path != "/appraisal":
+	if path not in PAGES:
 		return
 
 	content_type = str(response.headers.get("Content-Type", ""))

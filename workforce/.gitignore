@@ -1,0 +1,3 @@
+# Built assets. bench build writes hashed bundles into sites/assets, but some
+# setups also drop a dist/ here; either way it is generated, never committed.
+public/dist/

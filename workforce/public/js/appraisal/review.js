@@ -218,13 +218,8 @@ export function groupedTeam() {
 		});
 }
 
-export function statusTone(status) {
-	const s = String(status || '');
-	if (s === 'Sent' || s === 'In Progress') return 'gold';
-	if (s === 'Submitted' || s === 'Manager Review') return 'sky';
-	if (['Manager Submitted', 'Calibrated', 'Final Approved', 'Discussed', 'Closed'].indexOf(s) >= 0) return 'moss';
-	return '';
-}
+// One mapping, kept in store.js so the HR console uses the same one.
+export { statusTone } from './store.js';
 
 /* ----------------------------------------------------------------- panel */
 
@@ -414,6 +409,16 @@ export function missingSummary() {
 	return 'Still needed: ' + bits.join(', ') + '.';
 }
 
+/** Today as YYYY-MM-DD in the viewer's timezone — toISOString() would be UTC,
+ * which shows the wrong day either side of midnight. */
+function localDay() {
+	const d = new Date();
+	const p = function (n) {
+		return (n < 10 ? '0' : '') + n;
+	};
+	return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+}
+
 /* --------------------------------------------------------------- submit */
 
 export async function submitReview() {
@@ -430,7 +435,7 @@ export async function submitReview() {
 	if (r && r.ok) {
 		review.status = r.status || 'Manager Submitted';
 		review.editable = 0;
-		review.managerSubmittedOn = r.manager_submitted_on || new Date().toISOString().slice(0, 10);
+		review.managerSubmittedOn = r.manager_submitted_on || localDay();
 		queue.reset();
 		// Keep the team list honest without another round trip.
 		const row = review.team.filter(function (t) {

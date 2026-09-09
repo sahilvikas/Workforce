@@ -60,6 +60,16 @@ export function statusIndex(status) {
 	return STATUS_ORDER.indexOf(String(status || ''));
 }
 
+/** Chip tone for a status, shared by the manager area and the HR console. */
+export function statusTone(status) {
+	const s = String(status || '');
+	if (s === 'Sent' || s === 'In Progress') return 'gold';
+	if (s === 'Submitted' || s === 'Manager Review') return 'sky';
+	if (['Manager Submitted', 'Calibrated', 'Final Approved', 'Discussed', 'Closed'].indexOf(s) >= 0) return 'moss';
+	if (s === 'Not Applicable') return 'ink';
+	return '';
+}
+
 export function isSubmittedOrLater(status) {
 	const i = statusIndex(status);
 	return i >= 0 && i >= STATUS_ORDER.indexOf('Submitted');

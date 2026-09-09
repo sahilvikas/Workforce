@@ -9,6 +9,9 @@
 # standard ERPNext "HR Manager" / "HR User" roles are held by almost everyone on
 # this site and are deliberately not accepted here.
 
+import glob
+import os
+
 import frappe
 from frappe.utils.jinja_globals import bundled_asset
 
@@ -16,6 +19,21 @@ no_cache = 1
 sitemap = 0
 
 HR_ROLES = {"WF HR Manager", "WF Admin", "WF Recruitment Coordinator"}
+
+
+def _hr_css():
+	"""Path to a standalone hr.bundle CSS file, when the build emitted one.
+
+	Frappe's esbuild normally folds a bundle's CSS into the JS as a
+	frappe.dom.set_style() call, but only for bundles that contain an SFC
+	<style> block (esbuild/frappe-vue-style.js). HrApp.vue keeps one so that
+	happens; this is the belt to that braces, so a refactor which removes every
+	<style> block cannot silently leave the page unstyled. When the CSS is
+	inlined no file exists, the glob finds nothing, and nothing is linked.
+	"""
+	folder = os.path.join(frappe.get_app_path("workforce"), "public", "dist", "js")
+	hits = sorted(glob.glob(os.path.join(folder, "hr.bundle.*.css")), key=os.path.getmtime)
+	return "/assets/workforce/dist/js/" + os.path.basename(hits[-1]) if hits else ""
 
 
 def get_context(context):
@@ -40,5 +58,6 @@ def get_context(context):
 
 	# The same hashed path include_script() emits, for the wfa-build meta tag.
 	context.wfa_build = bundled_asset("hr.bundle.js")
+	context.hr_css = _hr_css()
 
 	return context

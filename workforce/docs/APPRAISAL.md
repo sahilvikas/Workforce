@@ -993,6 +993,38 @@ it; no existing rule changed.
 `review.js` re-exports it, so the manager area and the console cannot drift
 apart on chip colours.
 
+### Build and caching
+
+`bench build --app workforce` picks `hr.bundle.js` up from the `*.bundle.js` glob
+and writes `hr.bundle.<hash>.js`, which `include_script('hr.bundle.js')` resolves
+from `assets.json`. `index.py` sets `no_cache = 1` and the page carries the hashed
+path in `<meta name="wfa-build">`, exactly as `/appraisal` does (§3).
+
+One trap, which cost this page a release: **frappe's esbuild only folds a bundle's
+CSS into its JS when the bundle contains an SFC `<style>` block.**
+`esbuild/frappe-vue-style.js`'s `get_files()` looks for an input matching
+`.vue?type=style`, and schedules the `frappe.dom.set_style(...)` prepend only for
+those bundles. Every HR component originally kept its styling in `theme.css` and
+declared no `<style>` of its own, so the plugin skipped `hr.bundle`, esbuild wrote
+`hr.bundle.<hash>.css` as a plain file, nothing linked it, and `/hr` loaded with
+no CSS at all.
+
+Two things stop that happening again:
+
+1. `HrApp.vue` carries a `<style>` block with one real shell rule and a comment
+   saying why it must stay. It is as load-bearing as the `set_style` shim itself.
+2. `index.py`'s `_hr_css()` globs `public/dist/js/hr.bundle.*.css` and, if a file
+   is there, `index.html` links it. When the CSS is inlined no such file exists,
+   the glob finds nothing, and nothing is linked — so the fallback costs nothing
+   in the normal case.
+
+To check which path a build took:
+
+```bash
+grep -c set_style sites/assets/workforce/dist/js/hr.bundle.*.js   # expect 1
+ls sites/assets/workforce/dist/js/ | grep 'hr.bundle.*css'        # expect nothing
+```
+
 ### Statuses
 
 `Draft, Ready, Sent, In Progress, Submitted, Manager Review, Manager Submitted,

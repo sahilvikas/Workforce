@@ -272,3 +272,14 @@ export default {
 	},
 };
 </script>
+
+<style>
+/* Load-bearing, like the set_style shim in www/hr/index.html. Frappe's esbuild
+   only routes a bundle's CSS through frappe.dom.set_style() when the bundle
+   contains an SFC <style> block (esbuild/frappe-vue-style.js, get_files); with
+   none, the CSS is written to a file nothing links and /hr loads unstyled.
+   Keep at least one real rule here. */
+#hr-root {
+	min-height: 100vh;
+}
+</style>

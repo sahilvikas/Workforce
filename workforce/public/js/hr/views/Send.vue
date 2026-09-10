@@ -52,18 +52,23 @@
 									</td>
 									<td>{{ p.manager_name || '—' }}</td>
 									<td>
-										<label class="sr-only" :for="'stpl-' + p.name">Template for {{ p.employee_name }}</label>
-										<select
-											:id="'stpl-' + p.name"
-											class="input"
-											style="padding:4px 8px;font-size:13px"
-											:value="p.template || ''"
-											@click.stop
-											@change="setTemplate(p, $event.target.value)"
-										>
-											<option value="">— pick —</option>
-											<option v-for="t in hr.templates" :key="t.name" :value="t.name">{{ t.template_name }}</option>
-										</select>
+										<!-- A manager or the CEO with no template of their own is not
+										     filling anything in: they get a reviews-only link. -->
+										<Chip v-if="reviewsOnly(p)">Reviews only</Chip>
+										<template v-else>
+											<label class="sr-only" :for="'stpl-' + p.name">Template for {{ p.employee_name }}</label>
+											<select
+												:id="'stpl-' + p.name"
+												class="input"
+												style="padding:4px 8px;font-size:13px"
+												:value="p.template || ''"
+												@click.stop
+												@change="setTemplate(p, $event.target.value)"
+											>
+												<option value="">— pick —</option>
+												<option v-for="t in hr.templates" :key="t.name" :value="t.name">{{ t.template_name }}</option>
+											</select>
+										</template>
 									</td>
 									<td><Chip :tone="tone(status(p))">{{ status(p) }}</Chip></td>
 								</tr>
@@ -85,6 +90,7 @@
 					<div v-for="(r, i) in hr.sendResults" :key="i" class="report-row">
 						<span>
 							<b>{{ r.label }}</b>
+							<span v-if="r.note" class="small muted"> — {{ r.note }}</span>
 							<span v-if="r.problems && r.problems.length" class="small muted"> — {{ r.problems.join('; ') }}</span>
 						</span>
 						<span class="row">
@@ -98,24 +104,54 @@
 			<div>
 				<div class="card">
 					<h3>2. Preview</h3>
-					<div class="mailprev mt-2">
-						<div class="from">
-							From: Cozy Corner Patios HR &lt;{{ sender }}&gt; · To: {{ preview ? preview.email : '…' }}
+
+					<p v-if="!preview" class="small muted mt-2">
+						Select someone to see the invitation they will get.
+					</p>
+
+					<template v-else>
+						<p v-if="hr.sel.length > 1" class="xs muted mt-1">
+							Preview for {{ preview.employee_name }}; each person gets their own.
+						</p>
+
+						<div v-if="previewLoading" class="mt-2" aria-busy="true">
+							<Skeleton width="70%" height="12px" />
+							<Skeleton width="50%" height="12px" mt="8px" />
+							<Skeleton width="100%" height="220px" mt="12px" radius="10px" />
+							<span class="sr-only">Loading the preview</span>
 						</div>
-						<p><b>Your self-appraisal is ready — {{ cycleName }}</b></p>
-						<p class="mt-2">Hi {{ preview ? first(preview.employee_name) : 'there' }},</p>
-						<p class="mt-1">
-							Your self-appraisal for the {{ cycleName }} is open until <b>{{ selfEnd }}</b>. It takes
-							about 35 minutes and saves as you go.
-						</p>
-						<p class="mt-2"><span class="muted">Open my appraisal</span></p>
-						<p class="mt-2">Your password: <span class="pw">••••••••</span></p>
-						<p class="mt-2 muted xs">
-							This link is personal to you. Please don’t forward it. If you have trouble, reply to
-							this email.
-						</p>
-					</div>
-					<p class="xs muted mt-2">The real password is generated per person when you send.</p>
+
+						<div v-else-if="previewError" class="mt-2">
+							<p class="err-text">{{ previewError }}</p>
+							<Button size="sm" class="mt-2" @click="loadPreview">Try again</Button>
+						</div>
+
+						<div v-else-if="previewMailDoc" class="mt-2">
+							<div class="mailprev" style="padding:0;overflow:hidden">
+								<div class="from" style="padding:12px 14px;margin:0">
+									To: {{ previewMailDoc.to || '—' }}<br />
+									Subject: <b>{{ previewMailDoc.subject }}</b>
+									<Chip v-if="variantLabel" style="margin-left:8px">{{ variantLabel }}</Chip>
+								</div>
+								<!-- The server's own render. allow-same-origin lets us measure the
+								     document; without allow-scripts nothing in it can run. -->
+								<iframe
+									ref="frame"
+									class="mailframe"
+									sandbox="allow-same-origin"
+									referrerpolicy="no-referrer"
+									title="Invitation preview"
+									:srcdoc="previewMailDoc.html"
+									:style="{ height: frameHeight }"
+									@load="fitFrame"
+								></iframe>
+							</div>
+							<p class="xs muted mt-2">
+								Exactly what the server would send. The password is masked and the link is a
+								placeholder — nothing has been mailed.
+							</p>
+						</div>
+					</template>
 				</div>
 
 				<div class="card mt-3">
@@ -143,24 +179,42 @@
 import {
 	hr,
 	sendablePeople,
+	needsTemplate,
+	reviewsOnly,
 	statusOf,
 	statusTone,
-	fmtDate,
 	saveEmployee,
 	prepare,
 	send,
+	previewMail,
 	loadRoster,
 	toast,
 } from '../hrStore.js';
 import Button from '../../appraisal/ui/Button.vue';
 import Chip from '../../appraisal/ui/Chip.vue';
+import Skeleton from '../../appraisal/ui/Skeleton.vue';
+
+const VARIANTS = {
+	employee: 'Self-appraisal',
+	manager: 'Self-appraisal and team',
+	manager_only: 'Reviews only',
+};
 
 export default {
 	name: 'HrSend',
-	components: { Button, Chip },
+	components: { Button, Chip, Skeleton },
 	emits: ['go'],
 	data() {
-		return { hr: hr, busyLabel: 'Sending…' };
+		return {
+			hr: hr,
+			busyLabel: 'Sending…',
+			previewMailDoc: null,
+			previewLoading: false,
+			previewError: '',
+			previewFor: '',
+			frameHeight: '260px',
+			debounce: null,
+		};
 	},
 	computed: {
 		rows() {
@@ -171,30 +225,42 @@ export default {
 				return hr.sel.indexOf(p.name) >= 0;
 			});
 		},
+		// Only people filling in a form of their own need one.
 		missingTemplate() {
 			return this.selected.filter(function (p) {
-				return !p.template && !Number(p.is_ceo);
+				return needsTemplate(p) && !p.template;
 			});
 		},
 		preview() {
-			return this.selected[0] || this.rows[0] || null;
+			return this.selected[0] || null;
 		},
-		cycleName() {
-			return (hr.cycle && (hr.cycle.cycle_name || hr.cycle.name)) || 'this cycle';
+		variantLabel() {
+			return this.previewMailDoc ? VARIANTS[this.previewMailDoc.variant] || '' : '';
 		},
-		selfEnd() {
-			return fmtDate(hr.cycle && hr.cycle.self_end) || 'the closing date';
+	},
+	watch: {
+		// One render per settled selection, not one per click.
+		preview: {
+			immediate: true,
+			handler(person) {
+				if (this.debounce) clearTimeout(this.debounce);
+				if (!person) {
+					this.previewMailDoc = null;
+					this.previewFor = '';
+					return;
+				}
+				if (person.name === this.previewFor && this.previewMailDoc) return;
+				this.debounce = setTimeout(this.loadPreview, 300);
+			},
 		},
-		sender() {
-			return (hr.cycle && hr.cycle.sender_email) || 'the default outgoing account';
-		},
+	},
+	beforeUnmount() {
+		if (this.debounce) clearTimeout(this.debounce);
 	},
 	methods: {
 		status: statusOf,
 		tone: statusTone,
-		first(name) {
-			return String(name || '').split(' ')[0];
-		},
+		reviewsOnly: reviewsOnly,
 		toggle(p) {
 			const i = hr.sel.indexOf(p.name);
 			if (i >= 0) hr.sel.splice(i, 1);
@@ -209,9 +275,42 @@ export default {
 			const r = await saveEmployee(p.employee_id, { template: value || '' });
 			if (r && !r.ok && r.message) toast(r.message);
 		},
+
+		async loadPreview() {
+			const person = this.preview;
+			if (!person) return;
+			this.previewLoading = true;
+			this.previewError = '';
+			const r = await previewMail(person.name);
+			// A newer selection may have overtaken this one mid-flight.
+			if (this.preview !== person) return;
+			this.previewLoading = false;
+			if (!r || !r.ok) {
+				this.previewMailDoc = null;
+				this.previewError = (r && r.message) || 'Something went wrong. Please try again.';
+				return;
+			}
+			this.previewFor = person.name;
+			this.previewMailDoc = r;
+			this.frameHeight = '260px';
+		},
+		fitFrame() {
+			const frame = this.$refs.frame;
+			if (!frame) return;
+			try {
+				const doc = frame.contentDocument;
+				const h = doc && doc.body ? doc.body.scrollHeight : 0;
+				if (h) this.frameHeight = Math.min(Math.max(h + 24, 160), 900) + 'px';
+			} catch (e) {
+				/* a browser that will not let us measure keeps the default height */
+			}
+		},
+
 		/**
-		 * Two steps, in order: create the appraisals for anyone who has none, then
-		 * mail every selected row that is now Ready (or Not Applicable).
+		 * Two steps, in order: create the records for anyone who has none — which
+		 * for a manager or the CEO with no template is a Not Applicable,
+		 * reviews-only record — then mail every selected row that is now Ready or
+		 * Not Applicable.
 		 */
 		async run() {
 			hr.sending = true;
@@ -234,7 +333,9 @@ export default {
 					return;
 				}
 				(pr.results || []).forEach(function (row) {
-					if (row.action === 'created' && row.status === 'Ready') return; // will show as sent below
+					// A row that came out Ready or Not Applicable is about to be mailed;
+					// it reports below rather than twice.
+					if (row.action === 'created' && (row.status === 'Ready' || row.status === 'Not Applicable')) return;
 					results.push({
 						label: row.employee_name || row.employee,
 						action: row.action === 'created' ? 'created · ' + row.status : row.action,
@@ -245,7 +346,7 @@ export default {
 				});
 			}
 
-			// The roster now knows every appraisal name and its status.
+			// The roster now knows every record name and its status.
 			this.busyLabel = 'Sending…';
 			await loadRoster();
 
@@ -259,9 +360,16 @@ export default {
 
 			if (!sendable.length) {
 				hr.sending = false;
-				hr.sendResults = results.length ? results : [{ label: 'Nothing to send', action: 'skipped', tone: 'gold', problems: ['No selected row reached Ready.'] }];
+				hr.sendResults = results.length
+					? results
+					: [{ label: 'Nothing to send', action: 'skipped', tone: 'gold', problems: ['No selected row reached Ready.'] }];
 				return;
 			}
+
+			const reviewsOnlyNames = {};
+			sendable.forEach(function (p) {
+				if (p.appraisal_status === 'Not Applicable') reviewsOnlyNames[p.appraisal] = 1;
+			});
 
 			const sr = await send(sendable.map(function (p) {
 				return p.appraisal;
@@ -277,6 +385,7 @@ export default {
 				results.push({
 					label: row.employee_name || row.appraisal,
 					action: row.action,
+					note: reviewsOnlyNames[row.appraisal] ? 'reviews-only link' : '',
 					tone: row.action === 'sent' ? 'moss' : row.action === 'error' ? 'brick' : 'gold',
 					problems: row.problems || [],
 					showMonitor: false,
@@ -290,3 +399,13 @@ export default {
 	},
 };
 </script>
+
+<style>
+.mailframe {
+	width: 100%;
+	border: 0;
+	display: block;
+	background: var(--paper);
+	transition: height 0.2s var(--ease);
+}
+</style>

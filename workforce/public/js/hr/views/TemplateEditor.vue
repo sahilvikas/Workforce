@@ -142,21 +142,26 @@
 </template>
 
 <script>
-import { hr, COMPETENCIES, CONTRIB_AREAS, saveTemplate, toast } from '../hrStore.js';
+import { hr, NEW_TEMPLATE_COMPETENCIES, NEW_TEMPLATE_CONTRIB_AREAS, saveTemplate, toast } from '../hrStore.js';
 import Button from '../../appraisal/ui/Button.vue';
 import Chip from '../../appraisal/ui/Chip.vue';
 import Field from '../../appraisal/ui/Field.vue';
 import TextArea from '../../appraisal/ui/TextArea.vue';
 
-function blankCompetencies(existing) {
-	const by = {};
-	(existing || []).forEach(function (c) {
-		by[c.competency] = c;
-	});
-	return COMPETENCIES.map(function (name) {
-		const c = by[name] || {};
+/* The server owns both lists and returns every row in its own order, so the
+   editor renders exactly what came back. The seed lists are used only when
+   there is nothing to render yet — a brand new template. Nothing here assumes
+   how many rows there are. */
+
+function competencyRows(existing) {
+	const rows = Array.isArray(existing) && existing.length
+		? existing
+		: NEW_TEMPLATE_COMPETENCIES.map(function (name) {
+				return { competency: name };
+		  });
+	return rows.map(function (c) {
 		return {
-			competency: name,
+			competency: c.competency || '',
 			applicable: Number(c.applicable || 0),
 			weightage: c.weightage === undefined || c.weightage === null ? '' : c.weightage,
 			kra_label: c.kra_label || '',
@@ -166,15 +171,15 @@ function blankCompetencies(existing) {
 	});
 }
 
-function blankContributions(existing) {
-	const by = {};
-	(existing || []).forEach(function (c) {
-		by[c.area] = c;
-	});
-	return CONTRIB_AREAS.map(function (area) {
-		const c = by[area] || {};
+function contributionRows(existing) {
+	const rows = Array.isArray(existing) && existing.length
+		? existing
+		: NEW_TEMPLATE_CONTRIB_AREAS.map(function (area) {
+				return { area: area };
+		  });
+	return rows.map(function (c) {
 		return {
-			area: area,
+			area: c.area || '',
 			weightage: c.weightage === undefined || c.weightage === null ? '' : c.weightage,
 			kpi: c.kpi || '',
 			target: c.target || '',
@@ -201,8 +206,8 @@ export default {
 				kras: (doc.kras || []).map(function (k) {
 					return { kra: k.kra || '', weightage: k.weightage === null || k.weightage === undefined ? '' : k.weightage, kpi: k.kpi || '', target: k.target || '' };
 				}),
-				competencies: blankCompetencies(doc.competencies),
-				contributions: blankContributions(doc.contributions),
+				competencies: competencyRows(doc.competencies),
+				contributions: contributionRows(doc.contributions),
 			},
 		};
 	},

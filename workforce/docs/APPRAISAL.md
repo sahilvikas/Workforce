@@ -1037,6 +1037,37 @@ and excluded from every count, the matrix and both exports.
 Chips: Sent and In Progress marigold, Submitted and Manager Review sky, Manager
 Submitted and later moss, `Not Applicable` ink, Draft and Ready plain.
 
+### Doctypes
+
+The `WF Appraisal*` doctypes were created in the ERPNext UI and have never been
+exported to this repo — there is no `workforce/workforce/doctype/` folder. That
+matters in one direction only: `bench migrate` syncs doctypes **from JSON files
+in an app** (`frappe/model/sync.py`, "Sync's doctype and docfields from txt files
+to database"), so a doctype with no file in any app is left exactly as the site
+has it. **Changes made in the UI cannot be reverted by migrate while that stays
+true.**
+
+The two Select fields widened for this release, for the record:
+
+| Doctype | Field | Options |
+|---|---|---|
+| WF Appraisal Competency | `competency` | Teamwork, Communication, Ownership, Problem-solving, Discipline, Adaptability |
+| WF Appraisal Contribution | `area` | Process Improvement, Additional Responsibility, Cost Saving, Cross-Team Support, Initiatives Beyond Regular KRAs |
+
+If these doctypes should live in the repo — worth doing, so a rebuilt site gets
+them — export them from the site rather than hand-writing them; a partial JSON
+committed here *would* be synced by the next migrate and would overwrite the live
+definition with whatever the file omits. Either turn on `developer_mode` in
+`site_config.json` and re-save each DocType in the Desk, which writes the JSON
+into the app, or:
+
+```bash
+bench --site erp.cozycornerpatios.com export-doc DocType "WF Appraisal Competency"
+bench --site erp.cozycornerpatios.com export-doc DocType "WF Appraisal Contribution"
+```
+
+Then commit whatever lands under `workforce/workforce/doctype/`.
+
 ### Dates
 
 The employee app never `Date`-parses server strings. This page has to group by
@@ -1070,8 +1101,20 @@ status, and a New cycle button.
 
 **KRA templates** — cards with a weight bar, "used by N", and an amber chip when
 the template is not complete. The editor covers name, team, notes, active, KRA
-rows (add, remove, reorder, weight, KPI, target), the fixed five competencies
-each with an on/off toggle, and the fixed four contribution areas. Live "weights
+rows (add, remove, reorder, weight, KPI, target), the competencies each with an
+on/off toggle, and the contribution areas.
+
+The competency and contribution lists belong to the server: `get_templates`
+returns every row in its own order and `save_template` rebuilds both tables in
+that order, so the editor renders whatever came back and never assumes a length.
+Today that is six competencies — Teamwork, Communication, Ownership,
+Problem-solving, Discipline, Adaptability — and five contribution areas —
+Process Improvement, Additional Responsibility, Cost Saving, Cross-Team Support,
+Initiatives Beyond Regular KRAs. `NEW_TEMPLATE_COMPETENCIES` and
+`NEW_TEMPLATE_CONTRIB_AREAS` in `hrStore.js` seed a brand new template and are
+used for nothing else; adding a seventh competency server-side needs no frontend
+change beyond that seed. The employee, manager and read views already render
+from rows. Live "weights
 total X of Y" chips. The client mirrors the server's readiness rule — KRA weights
 total the section weight, every KRA has a name, a KPI and a target, and under
 `strict_weights` the applicable competency weights total their section — and
@@ -1083,13 +1126,32 @@ which parses the file in the browser, calls `import_roster` with `dry:1`, shows
 the per-row report, and only enables the real import when the dry run reports
 zero errors.
 
-**Send** — who, preview, send. Step 1 lists people whose appraisal is missing,
-Draft or Ready, with an inline template picker and a warning when a selected
-person has no template. Step 3 does two calls in order: `prepare` for the
-selected people who have no appraisal yet, then `send` for every selected row
-that is now `Ready` or `Not Applicable`. A row that came back `Draft` is shown
-with its problems and an "Open in Monitor" link. A `Draft` appraisal is never
-mailed.
+**Send** — who, preview, send.
+
+Step 1 lists everyone still invitable. A person is **sendable** when their
+appraisal is missing, `Draft`, `Ready`, or `Not Applicable` **with no
+`sent_on`** — that last case is the manager or CEO who has no form of their own
+this cycle and gets a reviews-only link. Only people filling in a form need a
+template, so the "no template" warning applies to rows with `is_manager` and
+`is_ceo` both 0; a reviews-only row shows a muted **Reviews only** chip in the
+template column instead of a picker. A manager who *does* have a template keeps
+the picker and is treated like anyone else.
+
+Step 2 is the real mail. `wfa_hr_preview` renders exactly what `wfa_hr_send`
+would send for the selected person — the password masked, the link a placeholder,
+nothing written and nothing mailed — and the page shows the recipient, the
+subject and the variant, with the HTML in a sandboxed `<iframe srcdoc>` sized to
+its content. The frame carries `sandbox="allow-same-origin"`: without
+`allow-scripts` nothing in the document can run, and same-origin is what lets the
+page measure it. Selection changes are debounced 300 ms; with several people
+selected it renders the first and says each person gets their own.
+
+Step 3 does two calls in order: `prepare` for the selected people who have no
+record yet — which for a reviews-only manager creates their `Not Applicable`
+record — then `send` for every selected row that is now `Ready` or
+`Not Applicable`. Results are listed per row; a `Not Applicable` row is marked
+"reviews-only link". A row that came back `Draft` is shown with its problems and
+an "Open in Monitor" link. A `Draft` appraisal is never mailed.
 
 **Monitor** — search, department, status and manager filters over the roster,
 with both weighted scores, last activity and a locked chip. A row with an
@@ -1150,6 +1212,7 @@ rendered verbatim. Common failures on all of them: `not_allowed`, `bad_json`,
 | `advance` | `{appraisal, to, hr_rating?, notes?}` | `{ok:1, appraisal, status, stamped_on, from}` — failures `not_found`, `bad_transition`, `rating_required` |
 | `reopen` | `{appraisal, reason, target}` | `{ok:1, appraisal, status, target, mail_sent, message}` — failures `not_found`, `missing_reason`, `bad_target`, `bad_status` |
 | `remind` | `{who, appraisals:[…]}` or `{who, cycle, all_pending:1}`, `dry?` | `{ok:1, who, dry, sent, results:[…]}` — failures `bad_target`, `no_rows` |
+| `preview` | `{employee, cycle}` | `{ok:1, subject, html, to, variant:'employee'\|'manager'\|'manager_only'}` — renders what `send` would mail, writes and sends nothing. Failures `not_found`, `bad_cycle` |
 | `export` | `{cycle, shape}` | `{ok:1, cycle, shape, columns:[…], rows:[[…]], count}` |
 
 Allowed `advance` transitions: `Submitted→Manager Review`,

@@ -57,8 +57,24 @@ export const STAGE_HINTS = {
 
 export const STAGE_RAIL = ['Sent', 'In Progress', 'Submitted', 'Manager Review', 'Manager Submitted', 'Calibrated', 'Final Approved', 'Discussed', 'Closed'];
 
-export const COMPETENCIES = ['Teamwork', 'Communication', 'Ownership', 'Problem-solving', 'Discipline'];
-export const CONTRIB_AREAS = ['Process Improvement', 'Additional Responsibility', 'Cost Saving', 'Cross-Team Support'];
+/* The server owns these lists and returns the rows in its own order; a template
+   editor renders whatever came back. These are the seed for a brand new
+   template only — never a length or an order to validate against. */
+export const NEW_TEMPLATE_COMPETENCIES = [
+	'Teamwork',
+	'Communication',
+	'Ownership',
+	'Problem-solving',
+	'Discipline',
+	'Adaptability',
+];
+export const NEW_TEMPLATE_CONTRIB_AREAS = [
+	'Process Improvement',
+	'Additional Responsibility',
+	'Cost Saving',
+	'Cross-Team Support',
+	'Initiatives Beyond Regular KRAs',
+];
 
 export const CYCLE_WINDOWS = [
 	{ key: 'self', label: 'Self-appraisal' },
@@ -488,19 +504,37 @@ export function filteredPeople(options) {
 	});
 }
 
-/** People who could be invited: no appraisal yet, or one still Draft/Ready. */
+/**
+ * Who can still be invited. Besides people with a form to fill in, this covers
+ * the token holders who only ever review: a manager or the CEO gets a
+ * Not Applicable record and a reviews-only link, so they stay sendable until
+ * that link has actually gone out.
+ */
+export function isSendable(p) {
+	const s = statusOf(p);
+	if (s === 'Not Applicable') return !p.sent_on;
+	return s === 'Not sent' || s === 'Draft' || s === 'Ready';
+}
+
+/** Only people who fill in a form of their own need a template. */
+export function needsTemplate(p) {
+	return !Number(p.is_manager) && !Number(p.is_ceo);
+}
+
+/** A reviews-only row is a manager or CEO with no template of their own. */
+export function reviewsOnly(p) {
+	return !needsTemplate(p) && !p.template;
+}
+
 export function sendablePeople() {
 	return hr.people.filter(function (p) {
-		if (Number(p.is_ceo)) return false;
 		if (hr.sendDept && p.department !== hr.sendDept) return false;
-		return notYetSent(p);
+		return isSendable(p);
 	});
 }
 
 export function sendableCount() {
-	return hr.people.filter(function (p) {
-		return !Number(p.is_ceo) && notYetSent(p);
-	}).length;
+	return hr.people.filter(isSendable).length;
 }
 
 export function navCount(counter) {
@@ -588,6 +622,11 @@ export async function saveDefinitions(name, tables) {
 	const r = await call('save_definitions', Object.assign({ name: name }, tables));
 	if (r && r.ok) await loadRoster();
 	return r;
+}
+
+/** What wfa_hr_send would mail this person: renders, writes nothing, sends nothing. */
+export async function previewMail(employee) {
+	return call('preview', { employee: employee, cycle: hr.cycleName }, READ);
 }
 
 export async function exportRows(shape) {

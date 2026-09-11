@@ -1,4 +1,5 @@
 import { createApp } from 'vue';
+import './components/shared/wf-tokens.css';
 import WorkforceHub from './components/WorkforceHub.vue';
 
 // Register mount function globally

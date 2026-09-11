@@ -1,22 +1,9 @@
 <template>
-	<span class="wf-badge" :class="colorClass">{{ label }}</span>
+	<span class="wf-badge" :class="'tone-' + tone">{{ label }}</span>
 </template>
 
 <script>
-const COLOR_MAP = {
-	'Open': 'green', 'On Hold': 'orange', 'Closed': 'gray',
-	'Applied': 'blue', 'Under Screening': 'orange', 'Shortlisted': 'green',
-	'Rejected at Screening': 'red', 'Interview Scheduled': 'blue',
-	'Interview In Progress': 'orange', 'All Rounds Complete': 'purple',
-	'Selected': 'green', 'Not Selected': 'red', 'Offer Sent': 'blue',
-	'Offer Accepted': 'green', 'Offer Declined': 'red',
-	'Onboarding Initiated': 'purple',
-	'Scheduled': 'blue', 'In Progress': 'orange', 'Completed': 'green',
-	'Cancelled': 'gray', 'Pending': 'orange', 'Invited': 'blue',
-	'Responded': 'green', 'Declined': 'red', 'Rejected': 'red',
-	'Strongly Recommend': 'green', 'Recommend': 'green',
-	'Neutral': 'orange', 'Do Not Recommend': 'red'
-};
+import { toneFor } from '../utils/statusMeta.js';
 
 export default {
 	name: 'Badge',
@@ -24,8 +11,8 @@ export default {
 		label: { type: String, required: true }
 	},
 	computed: {
-		colorClass() {
-			return 'badge-' + (COLOR_MAP[this.label] || 'gray');
+		tone() {
+			return toneFor(this.label);
 		}
 	}
 };
@@ -33,17 +20,31 @@ export default {
 
 <style scoped>
 .wf-badge {
-	display: inline-block;
-	padding: 3px 10px;
-	border-radius: 12px;
-	font-size: 12px;
-	font-weight: 600;
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	height: 24px;
+	padding: 0 10px;
+	border-radius: 999px;
+	font-size: 12.5px;
+	font-weight: 500;
 	white-space: nowrap;
+	line-height: 1;
 }
-.badge-green { background: #dcfce7; color: #166534; }
-.badge-red { background: #fee2e2; color: #991b1b; }
-.badge-blue { background: #dbeafe; color: #1e40af; }
-.badge-orange { background: #ffedd5; color: #9a3412; }
-.badge-purple { background: #f3e8ff; color: #6b21a8; }
-.badge-gray { background: #f3f4f6; color: #4b5563; }
+.wf-badge::before {
+	content: "";
+	width: 6px;
+	height: 6px;
+	border-radius: 50%;
+	background: currentColor;
+	flex: none;
+}
+.tone-ok { background: var(--wf-ok-tint, #DCFCE7); color: var(--wf-ok, #166534); }
+.tone-ok::before { background: var(--wf-ok-dot, #10B981); }
+.tone-hold { background: var(--wf-hold-tint, #FEF3C7); color: var(--wf-hold, #92400E); }
+.tone-primary { background: var(--wf-primary-tint, #EEF2FF); color: var(--wf-primary-2, #4338CA); }
+.tone-decision { background: var(--wf-amber-tint, #FEF3C7); color: var(--wf-amber-ink, #92400E); }
+.tone-decision::before { background: var(--wf-amber, #F59E0B); }
+.tone-bad { background: var(--wf-bad-tint, #FEE2E2); color: var(--wf-bad-ink, #991B1B); }
+.tone-grey { background: #F3F4F6; color: var(--wf-mut, #6B7280); }
 </style>

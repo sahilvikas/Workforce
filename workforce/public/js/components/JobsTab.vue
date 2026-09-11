@@ -207,8 +207,8 @@
 
 		<!-- ==================== MAIN DASHBOARD / JOBS / TEMPLATES ==================== -->
 		<div v-else>
-			<!-- Sub Navigation -->
-			<div class="sub-nav">
+			<!-- Sub Navigation (hidden when the new sidebar drives the section) -->
+			<div class="sub-nav" v-if="!section">
 				<button v-if="!isCoordinator" :class="{ active: subView === 'dashboard' }" @click="switchSubView('dashboard')">Hiring Dashboard</button>
 				<button :class="{ active: subView === 'jobs' }" @click="switchSubView('jobs')">Job Openings</button>
 				<button :class="{ active: subView === 'templates' }" @click="switchSubView('templates')">Interview Templates</button>
@@ -611,6 +611,11 @@ export default {
 	name: 'JobsTab',
 	components: { Badge, KpiCard, Dialog, DetailPanel, Toast },
 
+	// Set by WorkforceHub's sidebar: 'dashboard' | 'jobs' | 'templates'. Empty = old sub-nav behaviour.
+	props: {
+		section: { type: String, default: '' }
+	},
+
 	data() {
 		return {
 			view: 'main',          // main | position | candidate
@@ -715,7 +720,7 @@ export default {
 			return l[this.actionType] || 'Confirm';
 		},
 		isHR() {
-			return this.userRoles.includes('WF HR Manager') || this.userRoles.includes('System Manager');
+			return this.userRoles.includes('WF HR Manager') || this.userRoles.includes('WF Admin') || this.userRoles.includes('System Manager');
 		},
 		isCoordinator() {
 			return this.userRoles.includes('WF Recruitment Coordinator') && !this.isHR;
@@ -732,10 +737,19 @@ export default {
 		}
 	},
 
+	watch: {
+		section(v) {
+			if (!v) return;
+			this.view = 'main';
+			this.switchSubView((v === 'dashboard' && this.isCoordinator) ? 'jobs' : v);
+		}
+	},
+
 	mounted() {
 		this.userRoles = (window.frappe && frappe.user_roles) || [];
 		// Coordinators have no Hiring Dashboard — land them on Job Openings
 		if (this.isCoordinator) this.subView = 'jobs';
+		if (this.section) this.subView = (this.section === 'dashboard' && this.isCoordinator) ? 'jobs' : this.section;
 		this.loadDashboardData();
 		this.loadJobs();
 		this.loadTemplates();

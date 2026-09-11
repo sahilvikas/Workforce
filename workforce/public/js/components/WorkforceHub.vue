@@ -12,16 +12,18 @@
 			<div v-for="group in navGroups" :key="group.name" class="wf-ngroup">
 				<h6>{{ group.name }}</h6>
 				<nav class="wf-nav">
-					<a
+					<!-- buttons, not links: Frappe's desk router hijacks <a href="#..."> clicks -->
+					<button
 						v-for="item in group.items"
 						:key="item.key"
-						:href="'#' + item.key"
+						type="button"
 						:class="{ on: activeTab === item.key }"
-						@click.prevent="switchTab(item.key)"
+						:aria-current="activeTab === item.key ? 'page' : null"
+						@click="switchTab(item.key)"
 					>
 						<svg class="wf-ic" viewBox="0 0 24 24" aria-hidden="true" v-html="icons[item.icon]"></svg>
 						<span>{{ labelFor(item) }}</span>
-					</a>
+					</button>
 				</nav>
 			</div>
 
@@ -43,6 +45,7 @@
 				<CandidatesTab v-if="activeTab === 'candidates'" />
 				<InterviewsTab v-if="activeTab === 'interviews'" />
 				<TalentSearchTab v-if="activeTab === 'talent'" />
+				<SharedProfilesTab v-if="activeTab === 'shared'" />
 			</div>
 		</main>
 	</div>
@@ -56,6 +59,7 @@ import CmoApprovalsTab from './CmoApprovalsTab.vue';
 import CandidatesTab from './CandidatesTab.vue';
 import InterviewsTab from './InterviewsTab.vue';
 import TalentSearchTab from './TalentSearchTab.vue';
+import SharedProfilesTab from './SharedProfilesTab.vue';
 
 // Roles are the SAME as the old allTabs (phase 01 changes presentation only).
 // 'WF Admin' is the admin fallback, NOT 'System Manager'.
@@ -71,6 +75,8 @@ const NAV = [
 	{ key: 'candidates',    label: 'Candidates',          group: 'People', icon: 'users',  roles: JOBS_ROLES },
 	{ key: 'interviews',    label: 'Interviews',          group: 'People', icon: 'cal',    roles: JOBS_ROLES },
 	{ key: 'talent',        label: 'Talent search',       group: 'People', icon: 'search', roles: JOBS_ROLES },
+	// Profiles HR shared with a hiring manager / the CMO (talent search)
+	{ key: 'shared',        label: 'Shared profiles',     group: 'People', icon: 'share',  roles: ['WF Admin', 'WF Hiring Manager', 'WF CMO'] },
 	{ key: 'templates',     label: 'Interview templates', group: 'Setup',  icon: 'layers', roles: JOBS_ROLES, jobs: 'templates' }
 ];
 
@@ -83,7 +89,8 @@ const ICONS = {
 	users: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.5 3.4-5.5 6.5-5.5s5.7 2 6.5 5.5M16 4.5a3.5 3.5 0 010 7M18 14.8c1.8.8 3 2.6 3.5 5.2"/>',
 	cal: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
 	search: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>',
-	layers: '<path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/>'
+	layers: '<path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/>',
+	share: '<circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M8.2 11l7.6-4M8.2 13l7.6 4"/>'
 };
 
 const ROLE_TITLES = [
@@ -97,7 +104,7 @@ const ROLE_TITLES = [
 
 export default {
 	name: 'WorkforceHub',
-	components: { JobsTab, RequisitionsTab, ApprovalsTab, CmoApprovalsTab, CandidatesTab, InterviewsTab, TalentSearchTab },
+	components: { JobsTab, RequisitionsTab, ApprovalsTab, CmoApprovalsTab, CandidatesTab, InterviewsTab, TalentSearchTab, SharedProfilesTab },
 
 	data() {
 		return {
@@ -232,18 +239,22 @@ export default {
 
 .wf-ngroup { margin: 4px 0 14px; }
 .wf-ngroup h6 { margin: 0 10px 6px; font-size: 12px; font-weight: 500; color: #A5B4FC; }
-.wf-nav a {
+.wf-nav button {
 	position: relative;
 	display: flex; align-items: center; gap: 11px;
+	width: 100%;
 	padding: 9px 10px;
+	border: 0;
 	border-radius: 9px;
+	background: transparent;
 	color: var(--wf-primary-soft);
-	font-weight: 500; font-size: 14px;
-	text-decoration: none;
+	font: inherit; font-weight: 500; font-size: 14px;
+	text-align: left;
+	cursor: pointer;
 }
-.wf-nav a:hover { background: rgba(255, 255, 255, .07); color: #fff; }
-.wf-nav a.on { background: rgba(255, 255, 255, .12); color: #fff; }
-.wf-nav a.on::before {
+.wf-nav button:hover { background: rgba(255, 255, 255, .07); color: #fff; }
+.wf-nav button.on { background: rgba(255, 255, 255, .12); color: #fff; }
+.wf-nav button.on::before {
 	content: "";
 	position: absolute; left: -14px; top: 9px; bottom: 9px;
 	width: 3px; border-radius: 0 3px 3px 0;
@@ -284,8 +295,8 @@ export default {
 	.wf-brand, .wf-ngroup h6, .wf-who { display: none; }
 	.wf-ngroup { margin: 0; display: flex; }
 	.wf-nav { display: flex; gap: 2px; }
-	.wf-nav a { white-space: nowrap; padding: 8px 10px; }
-	.wf-nav a.on::before { display: none; }
+	.wf-nav button { width: auto; white-space: nowrap; padding: 8px 10px; }
+	.wf-nav button.on::before { display: none; }
 	.wf-main { padding: 20px 16px 80px; }
 }
 </style>

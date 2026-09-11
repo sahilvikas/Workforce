@@ -1,145 +1,158 @@
 <template>
-	<div class="talent-tab">
+	<div class="ts">
 		<Toast :visible="toast.show" :message="toast.msg" :type="toast.type" @hide="toast.show = false" />
 
-		<div class="tab-header">
-			<h2>Talent Search</h2>
-			<button v-if="eligibleCount" class="btn-primary" @click="bulkInvite" :disabled="saving">
-				Bulk Invite 80%+ ({{ eligibleCount }})
+		<div class="ts-head">
+			<div>
+				<h1>Talent search</h1>
+				<p>Profiles you find on Naukri or elsewhere. Import the file, check the AI score, share with the hiring manager, and invite the good ones to apply.</p>
+			</div>
+			<button class="btn pri" type="button" @click="openImport">
+				<svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5" /><path d="M4 16v3a2 2 0 002 2h12a2 2 0 002-2v-3" /></svg>
+				Import profiles
 			</button>
 		</div>
 
-		<!-- Upload -->
-		<div class="upload-section">
-			<div class="upload-card">
-				<h3>Import Candidates from CSV</h3>
-				<div class="upload-row">
-					<div class="form-group">
-						<label>Job Opening *</label>
-						<select v-model="selectedJob" class="form-input">
-							<option value="">Select job opening...</option>
-							<option v-for="j in jobs" :key="j.name" :value="j.name">{{ j.job_title }}</option>
-						</select>
-					</div>
-					<div class="form-group">
-						<label>CSV File *</label>
-						<input type="file" accept=".csv" @change="handleFile" class="form-input file-input" ref="fileInput" />
-					</div>
-				</div>
-				<p class="csv-hint">CSV columns: name, email, phone, skills, experience_years, current_company, source_portal, profile_url</p>
-
-				<div v-if="csvPreview.length" class="preview-section">
-					<h4>Preview ({{ csvPreview.length }} rows)</h4>
-					<div class="preview-table-wrap">
-						<table class="wf-table preview-table">
-							<thead><tr><th v-for="col in csvColumns" :key="col">{{ col }}</th></tr></thead>
-							<tbody>
-								<tr v-for="(row, i) in csvPreview.slice(0, 5)" :key="i">
-									<td v-for="col in csvColumns" :key="col">{{ row[col] || '—' }}</td>
-								</tr>
-								<tr v-if="csvPreview.length > 5"><td :colspan="csvColumns.length" class="center-text">... and {{ csvPreview.length - 5 }} more rows</td></tr>
-							</tbody>
-						</table>
-					</div>
-					<button class="btn-primary" @click="importProspects" :disabled="!selectedJob || saving" style="margin-top: 12px;">
-						{{ saving ? 'Importing...' : 'Import & Auto-Match' }}
-					</button>
-				</div>
+		<div class="kpis">
+			<div class="kpi" v-for="k in kpis" :key="k.label">
+				<span class="n">{{ k.value }}</span>
+				<span class="l">{{ k.label }}</span>
 			</div>
 		</div>
 
-		<!-- KPIs -->
-		<div v-if="prospects.length" class="kpi-row">
-			<KpiCard label="Total Prospects" :value="prospects.length" />
-			<KpiCard label="80%+ Match" :value="prospects.filter(p => p.match_score >= 80).length" />
-			<KpiCard label="Invited" :value="prospects.filter(p => p.outreach_status === 'Invited').length" />
-			<KpiCard label="Applied" :value="prospects.filter(p => p.outreach_status === 'Applied').length" />
-		</div>
+		<section class="panel">
+			<div class="toolbar">
+				<div class="search">
+					<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7" /><path d="M20 20l-4-4" /></svg>
+					<input v-model="q" class="in" placeholder="Search by name, skills or company" />
+				</div>
+				<select v-model="jobFilter" class="in sel">
+					<option value="">All positions</option>
+					<option v-for="j in jobs" :key="j.name" :value="j.name">{{ j.job_title }}</option>
+				</select>
+				<div class="chips">
+					<button v-for="c in statusChips" :key="c.key" type="button" class="chip" :class="{ on: statusFilter === c.key }" @click="statusFilter = c.key">
+						{{ c.label }} <span class="c">{{ c.count }}</span>
+					</button>
+				</div>
+			</div>
 
-		<!-- Filters -->
-		<div v-if="prospects.length" class="filters-row">
-			<input v-model="searchQuery" type="text" placeholder="Search by name, email, skills..." class="search-input" />
-			<select v-model="scoreFilter" class="filter-select">
-				<option value="">All Scores</option>
-				<option value="80">80%+ Match</option>
-				<option value="50">50%+ Match</option>
-				<option value="low">Below 50%</option>
-			</select>
-			<select v-model="outreachFilter" class="filter-select">
-				<option value="">All Statuses</option>
-				<option value="Pending">Pending</option>
-				<option value="Invited">Invited</option>
-				<option value="Responded">Responded</option>
-				<option value="Applied">Applied</option>
-				<option value="Declined">Declined</option>
-			</select>
-		</div>
-
-		<!-- Prospects Table -->
-		<div v-if="prospects.length" class="table-wrapper">
-			<table class="wf-table">
+			<div v-if="loading" class="empty"><p>Loading profiles…</p></div>
+			<div v-else-if="!filtered.length" class="empty">
+				<h3>{{ prospects.length ? 'No profiles match' : 'No profiles yet' }}</h3>
+				<p>{{ prospects.length ? 'Try another filter or clear the search.' : 'Export profiles from Naukri Resdex (Excel), then click Import profiles.' }}</p>
+			</div>
+			<table v-else class="t">
 				<thead>
-					<tr>
-						<th>Name</th>
-						<th>Email</th>
-						<th>Skills</th>
-						<th>Experience</th>
-						<th>Source</th>
-						<th>Match Score</th>
-						<th>Status</th>
-						<th>Action</th>
-					</tr>
+					<tr><th>Profile</th><th class="hs">Position</th><th class="hs">Experience</th><th>AI score</th><th>Status</th><th></th></tr>
 				</thead>
 				<tbody>
-					<tr v-for="p in filteredProspects" :key="p.name || p.email" class="clickable-row" @click="openDetail(p)">
-						<td class="name-cell">{{ p.prospect_name }}</td>
-						<td>{{ p.email }}</td>
-						<td class="skills-cell">{{ truncate(p.skills, 40) }}</td>
-						<td>{{ p.experience_years ? p.experience_years + ' yrs' : '—' }}</td>
-						<td>{{ p.source_portal || '—' }}</td>
-						<td><span class="score-badge" :class="scoreClass(p.match_score)">{{ p.match_score }}%</span></td>
-						<td><Badge :label="p.outreach_status || 'Pending'" /></td>
-						<td @click.stop>
-							<button v-if="p.outreach_status === 'Pending'" class="btn-invite" @click="sendInvite(p)" :disabled="saving">Send Invite</button>
-							<span v-else class="text-muted">{{ p.outreach_status }}</span>
+					<tr v-for="p in filtered" :key="p.name" @click="openDetail(p)">
+						<td>
+							<div class="ttl">{{ p.full_name }}</div>
+							<div class="sub">{{ p.current_designation || p.resume_headline || '—' }}<span v-if="p.current_location">, {{ p.current_location }}</span></div>
+						</td>
+						<td class="hs">{{ p.job_title }}</td>
+						<td class="hs">{{ p.total_experience || '—' }}</td>
+						<td><span :class="['score', scoreClass(p)]">{{ scoreText(p) }}</span></td>
+						<td>
+							<Badge :label="displayStatus(p)" />
+							<div v-if="p.manager_response" class="sub mr">{{ p.shared_with_name }}: {{ p.manager_response.toLowerCase() }}</div>
+						</td>
+						<td class="acts" @click.stop>
+							<button class="btn sm" type="button" :disabled="!!p.applied_as" @click="openShare(p)">Share</button>
+							<button class="btn sm" type="button" :disabled="!p.email || !!p.applied_as" @click="openInvite(p)">Invite</button>
 						</td>
 					</tr>
 				</tbody>
 			</table>
-		</div>
+		</section>
 
-		<!-- Empty state -->
-		<div v-if="!prospects.length && !csvPreview.length" class="empty-state">
-			<div class="empty-icon">🔍</div>
-			<h3>No prospects yet</h3>
-			<p>Upload a CSV file to import candidates and auto-match them against job requirements</p>
-		</div>
-
-		<!-- Detail Panel -->
-		<DetailPanel :visible="showPanel" :title="selectedProspect ? selectedProspect.prospect_name : ''" @close="showPanel = false">
-			<div v-if="selectedProspect" class="detail-content">
-				<div class="detail-row"><span class="detail-label">Status</span><Badge :label="selectedProspect.outreach_status || 'Pending'" /></div>
-				<div class="detail-row"><span class="detail-label">Email</span><span>{{ selectedProspect.email }}</span></div>
-				<div class="detail-row"><span class="detail-label">Phone</span><span>{{ selectedProspect.phone || '—' }}</span></div>
-				<div class="detail-row"><span class="detail-label">Experience</span><span>{{ selectedProspect.experience_years ? selectedProspect.experience_years + ' years' : '—' }}</span></div>
-				<div class="detail-row"><span class="detail-label">Current Company</span><span>{{ selectedProspect.current_company || '—' }}</span></div>
-				<div class="detail-row"><span class="detail-label">Source</span><span>{{ selectedProspect.source_portal || '—' }}</span></div>
-				<div class="detail-row"><span class="detail-label">Match Score</span><span class="score-badge" :class="scoreClass(selectedProspect.match_score)">{{ selectedProspect.match_score }}%</span></div>
-				<div class="detail-row"><span class="detail-label">Matched Job</span><span>{{ selectedProspect.matched_job || '—' }}</span></div>
-				<div v-if="selectedProspect.profile_url" class="detail-row">
-					<span class="detail-label">Profile</span>
-					<a :href="selectedProspect.profile_url" target="_blank" class="profile-link">View Profile</a>
-				</div>
-				<div v-if="selectedProspect.skills" class="detail-section">
-					<span class="detail-label">Skills</span>
-					<div class="skills-tags">
-						<span v-for="s in selectedProspect.skills.split(',')" :key="s" class="skill-tag">{{ s.trim() }}</span>
-					</div>
-				</div>
-				<div v-if="selectedProspect.invited_on" class="detail-row"><span class="detail-label">Invited On</span><span>{{ formatDate(selectedProspect.invited_on) }}</span></div>
+		<!-- import -->
+		<Dialog :visible="imp.show" title="Import profiles" :submit-label="imp.result ? 'Done' : 'Import'" :loading="imp.busy" @close="imp.show = false" @submit="doImport">
+			<div class="fld">
+				<label>For which position <span class="req">*</span></label>
+				<select v-model="imp.job" class="in">
+					<option value="">Choose a position</option>
+					<option v-for="j in openJobs" :key="j.name" :value="j.name">{{ j.job_title }}</option>
+				</select>
+				<div class="hint">Each profile is scored against this position’s description and skills.</div>
 			</div>
-			<template #actions>
-				<button v-if="selectedProspect && selectedProspect.outreach_status === 'Pending'" class="btn-primary" @click="sendInvite(selectedProspect)" :disabled="saving">Send Invite</button>
+			<div class="fld">
+				<label>File <span class="req">*</span></label>
+				<button type="button" class="drop" @click="pickFile">
+					<b>{{ imp.fileName || 'Choose the Excel or CSV file' }}</b>
+					<span>.xlsx, .xls or .csv, straight from Naukri Resdex</span>
+				</button>
+			</div>
+			<div class="note">Gender, date of birth, marital status and address are never imported, and they are not used for scoring.</div>
+			<div v-if="imp.result" class="result">
+				<b>{{ imp.result.created }} imported.</b>
+				<span v-if="imp.result.duplicate_count"> {{ imp.result.duplicate_count }} already in the list (skipped).</span>
+				<span v-if="imp.result.already_applied_count"> {{ imp.result.already_applied_count }} have already applied (skipped).</span>
+				<div class="sub">AI scores appear within a few minutes.</div>
+			</div>
+		</Dialog>
+
+		<!-- share -->
+		<Dialog :visible="share.show" title="Share with the hiring manager" submit-label="Share" :loading="share.busy" @close="share.show = false" @submit="doShare">
+			<p class="muted">They see experience, skills, salary and notice period. Name, phone, email and the Naukri link stay with HR.</p>
+			<div class="fld">
+				<label>Share with <span class="req">*</span></label>
+				<select v-model="share.to" class="in">
+					<option value="">Choose</option>
+					<option v-for="m in managers" :key="m.email" :value="m.email">{{ m.full_name }}</option>
+				</select>
+			</div>
+			<div class="fld">
+				<label>Note for them</label>
+				<textarea v-model="share.note" class="in ta" rows="3" placeholder="Why this profile could fit"></textarea>
+			</div>
+		</Dialog>
+
+		<!-- invite -->
+		<Dialog :visible="inv.show" title="Invite to apply" submit-label="Send invite" :loading="inv.busy" @close="inv.show = false" @submit="doInvite">
+			<p v-if="inv.p">An email goes from hr@ to <b>{{ inv.p.email }}</b> with the apply link for <b>{{ inv.p.job_title }}</b>. When they apply, they show up in Candidates like anyone else.</p>
+			<p v-if="inv.p && inv.p.manager_response !== 'Interested'" class="warn">The hiring manager hasn’t said they’re interested yet.</p>
+		</Dialog>
+
+		<!-- detail -->
+		<DetailPanel :visible="!!sel" :title="sel ? sel.full_name : ''" size="md" @close="sel = null">
+			<template v-if="sel">
+				<div class="pills"><Badge :label="displayStatus(sel)" /><span class="sub">{{ sel.name }}</span></div>
+				<div class="ai" v-if="sel.screening_status === 'Screened'">
+					<span :class="['score', 'big', scoreClass(sel)]">{{ scoreText(sel) }}</span>
+					<div><b>AI screening</b><p>{{ sel.ai_summary }}</p><p class="sub">{{ sel.ai_notes }}</p></div>
+				</div>
+				<div class="note" v-else-if="sel.screening_status === 'Pending'">AI score is being prepared. It appears within a few minutes.</div>
+				<div class="note warn" v-else>{{ sel.ai_notes || 'Could not be scored. Please review manually.' }}</div>
+
+				<dl class="kv">
+					<div><dt>Position</dt><dd>{{ sel.job_title }}</dd></div>
+					<div><dt>Experience</dt><dd>{{ sel.total_experience || '—' }}</dd></div>
+					<div><dt>Current role</dt><dd>{{ sel.current_designation || '—' }}</dd></div>
+					<div><dt>Company</dt><dd>{{ sel.current_company || '—' }}</dd></div>
+					<div><dt>Location</dt><dd>{{ sel.current_location || '—' }}</dd></div>
+					<div><dt>Notice period</dt><dd>{{ sel.notice_period || '—' }}</dd></div>
+					<div><dt>Current salary</dt><dd>{{ sel.annual_salary || '—' }}</dd></div>
+					<div><dt>Email</dt><dd>{{ sel.email || '—' }}</dd></div>
+					<div><dt>Phone</dt><dd>{{ sel.phone || '—' }}</dd></div>
+					<div><dt>Education</dt><dd>{{ [sel.ug_degree, sel.ug_specialization].filter(Boolean).join(', ') || '—' }}</dd></div>
+				</dl>
+				<div class="sec" v-if="sel.key_skills"><h4>Skills</h4><div class="tags"><span v-for="s in skillList(sel)" :key="s" class="tag">{{ s }}</span></div></div>
+				<div class="sec" v-if="sel.resume_headline || sel.summary"><h4>About</h4><p>{{ sel.resume_headline }}</p><p class="sub">{{ sel.summary }}</p></div>
+				<div class="sec" v-if="sel.shared_with">
+					<h4>Hiring manager</h4>
+					<p>Shared with {{ sel.shared_with_name }}<span v-if="sel.share_note">: “{{ sel.share_note }}”</span></p>
+					<p v-if="sel.manager_response"><Badge :label="sel.manager_response" /> <span class="sub">{{ sel.manager_note }}</span></p>
+					<p v-else class="sub">Waiting for their answer.</p>
+				</div>
+				<div class="sec" v-if="sel.applied_as"><h4>Applied</h4><p>Now a candidate: {{ sel.applied_as }}</p></div>
+				<div class="sec" v-if="sel.profile_link"><a :href="sel.profile_link" target="_blank" rel="noopener">Open the Naukri profile</a></div>
+			</template>
+			<template #actions v-if="sel && !sel.applied_as">
+				<button class="btn" type="button" @click="openShare(sel)">Share with hiring manager</button>
+				<button class="btn pri" type="button" :disabled="!sel.email" @click="openInvite(sel)">Invite to apply</button>
 			</template>
 		</DetailPanel>
 	</div>
@@ -147,271 +160,232 @@
 
 <script>
 import Badge from './shared/Badge.vue';
-import KpiCard from './shared/KpiCard.vue';
+import Dialog from './shared/Dialog.vue';
 import DetailPanel from './shared/DetailPanel.vue';
 import Toast from './shared/Toast.vue';
 
+const API = 'workforce.talent.';
+
 export default {
 	name: 'TalentSearchTab',
-	components: { Badge, KpiCard, DetailPanel, Toast },
-
+	components: { Badge, Dialog, DetailPanel, Toast },
 	data() {
 		return {
-			jobs: [],
-			prospects: [],
-			selectedJob: '',
-			csvPreview: [],
-			csvColumns: [],
-			csvRaw: [],
-			loading: false,
-			saving: false,
-			searchQuery: '',
-			scoreFilter: '',
-			outreachFilter: '',
-			showPanel: false,
-			selectedProspect: null,
-			toast: { show: false, msg: '', type: 'success' }
+			prospects: [], jobs: [], managers: [], loading: true,
+			q: '', jobFilter: '', statusFilter: 'all',
+			sel: null,
+			imp: { show: false, job: '', fileUrl: '', fileName: '', busy: false, result: null },
+			share: { show: false, p: null, to: '', note: '', busy: false },
+			inv: { show: false, p: null, busy: false },
+			toast: { show: false, msg: '', type: 'success' },
+			poll: null, pollCount: 0
 		};
 	},
-
 	computed: {
-		eligibleCount() {
-			return this.prospects.filter(p => p.match_score >= 80 && p.outreach_status === 'Pending').length;
-		},
-		filteredProspects() {
+		openJobs() { return this.jobs.filter(j => j.status === 'Open'); },
+		filtered() {
+			const q = this.q.trim().toLowerCase();
 			return this.prospects.filter(p => {
-				const q = this.searchQuery.toLowerCase();
-				const matchSearch = !q || (p.prospect_name || '').toLowerCase().includes(q) || (p.email || '').toLowerCase().includes(q) || (p.skills || '').toLowerCase().includes(q);
-				let matchScore = true;
-				if (this.scoreFilter === '80') matchScore = p.match_score >= 80;
-				else if (this.scoreFilter === '50') matchScore = p.match_score >= 50;
-				else if (this.scoreFilter === 'low') matchScore = p.match_score < 50;
-				const matchOutreach = !this.outreachFilter || p.outreach_status === this.outreachFilter;
-				return matchSearch && matchScore && matchOutreach;
+				if (this.jobFilter && p.job_opening !== this.jobFilter) return false;
+				if (this.statusFilter !== 'all' && this.displayStatus(p) !== this.statusFilter) return false;
+				if (!q) return true;
+				return [p.full_name, p.key_skills, p.current_company, p.current_designation, p.resume_headline].join(' ').toLowerCase().includes(q);
 			});
+		},
+		statusChips() {
+			const count = s => this.prospects.filter(p => this.displayStatus(p) === s).length;
+			return [
+				{ key: 'all', label: 'All', count: this.prospects.length },
+				{ key: 'New', label: 'New', count: count('New') },
+				{ key: 'Shared', label: 'Shared', count: count('Shared') },
+				{ key: 'Interested', label: 'Interested', count: count('Interested') },
+				{ key: 'Invited', label: 'Invited', count: count('Invited') },
+				{ key: 'Applied', label: 'Applied', count: count('Applied') }
+			];
+		},
+		kpis() {
+			const n = f => this.prospects.filter(f).length;
+			return [
+				{ label: 'Profiles', value: this.prospects.length },
+				{ label: 'Scored A or B', value: n(p => ['A', 'B'].includes(p.ai_grade)) },
+				{ label: 'Waiting on hiring manager', value: n(p => this.displayStatus(p) === 'Shared') },
+				{ label: 'Manager interested', value: n(p => this.displayStatus(p) === 'Interested') },
+				{ label: 'Applied after invite', value: n(p => !!p.applied_as) }
+			];
 		}
 	},
-
 	mounted() {
-		this.loadJobs();
-		this.loadProspects();
+		this.load();
+		this.api('wf_get_job_openings').then(r => { this.jobs = r || []; }).catch(() => {});
+		this.api(API + 'get_hiring_managers').then(r => { this.managers = r || []; }).catch(() => {});
 	},
-
+	beforeUnmount() { clearTimeout(this.poll); },
 	methods: {
-		scoreClass(score) { if (score >= 80) return 'score-high'; if (score >= 50) return 'score-mid'; return 'score-low'; },
-		truncate(str, len) { if (!str) return '—'; return str.length > len ? str.slice(0, len) + '...' : str; },
-
-		async api(method, params = {}) {
+		api(method, args = {}) {
 			return new Promise((resolve, reject) => {
-				frappe.call({
-					method: method,
-					args: params,
-					async: true,
-					callback: r => resolve(r.message),
-					error: reject
-				});
+				frappe.call({ method, args, callback: r => resolve(r.message), error: reject });
 			});
 		},
-
-		async loadJobs() {
+		notify(msg, type = 'success') { this.toast = { show: true, msg, type }; },
+		async load() {
 			try {
-				const res = await this.api('wf_get_open_positions');
-				this.jobs = res || [];
-			} catch (e) {
-				try {
-					this.jobs = await this.api('frappe.client.get_list', {
-						doctype: 'WF Job Opening',
-						fields: ['name', 'job_title'],
-						filters: { status: 'Open' },
-						limit_page_length: 0
-					});
-				} catch (e2) { /* silent */ }
+				const r = await this.api(API + 'get_prospects');
+				this.prospects = (r && r.prospects) || [];
+				if (this.sel) this.sel = this.prospects.find(p => p.name === this.sel.name) || null;
+			} catch (e) { /* frappe shows the error */ }
+			this.loading = false;
+			this.schedulePoll();
+		},
+		// While profiles are still being scored, refresh quietly every 30s (max ~10 minutes)
+		schedulePoll() {
+			clearTimeout(this.poll);
+			const pending = this.prospects.some(p => p.screening_status === 'Pending');
+			if (pending && this.pollCount < 20) {
+				this.pollCount++;
+				this.poll = setTimeout(() => this.load(), 30000);
 			}
 		},
+		displayStatus(p) { return p.applied_as ? 'Applied' : p.status; },
+		scoreText(p) {
+			if (p.screening_status === 'Pending') return 'Scoring…';
+			if (p.screening_status === 'Failed') return 'Review';
+			return (p.ai_score || 0) + (p.ai_grade ? ' ' + p.ai_grade : '');
+		},
+		scoreClass(p) {
+			if (p.screening_status !== 'Screened') return 's-pend';
+			return 's-' + (p.ai_grade || 'X');
+		},
+		skillList(p) { return (p.key_skills || '').split(',').map(s => s.trim()).filter(Boolean).slice(0, 20); },
+		openDetail(p) { this.sel = p; },
 
-		async loadProspects() {
+		openImport() { this.imp = { show: true, job: this.jobFilter || '', fileUrl: '', fileName: '', busy: false, result: null }; },
+		pickFile() {
+			new frappe.ui.FileUploader({
+				allow_multiple: false,
+				make_attachments_public: false,
+				restrictions: { allowed_file_types: ['.xlsx', '.xls', '.csv'] },
+				on_success: file => { this.imp.fileUrl = file.file_url; this.imp.fileName = file.file_name; }
+			});
+		},
+		async doImport() {
+			if (this.imp.result) { this.imp.show = false; return; }
+			if (!this.imp.job) { this.notify('Choose the position first.', 'error'); return; }
+			if (!this.imp.fileUrl) { this.notify('Choose the file first.', 'error'); return; }
+			this.imp.busy = true;
 			try {
-				this.prospects = await this.api('frappe.client.get_list', {
-					doctype: 'WF Prospect',
-					fields: ['*'],
-					limit_page_length: 0,
-					order_by: 'match_score desc'
-				});
-			} catch (e) { /* WF Prospect doctype may not exist yet */ }
+				const r = await this.api(API + 'import_prospects', { file_url: this.imp.fileUrl, job_opening: this.imp.job });
+				this.imp.result = r;
+				this.notify(r.message);
+				this.pollCount = 0;
+				await this.load();
+			} catch (e) { /* frappe shows the reason */ }
+			this.imp.busy = false;
 		},
 
-		handleFile(e) {
-			const file = e.target.files[0];
-			if (!file) return;
-			const reader = new FileReader();
-			reader.onload = (evt) => {
-				const lines = evt.target.result.split('\n').filter(l => l.trim());
-				if (lines.length < 2) { this.showToast('CSV must have header + at least 1 row', 'error'); return; }
-				const headers = this.parseCSVLine(lines[0]);
-				this.csvColumns = headers;
-				this.csvRaw = [];
-				this.csvPreview = [];
-				for (let i = 1; i < lines.length; i++) {
-					const values = this.parseCSVLine(lines[i]);
-					const row = {};
-					headers.forEach((h, idx) => { row[h.trim()] = (values[idx] || '').trim(); });
-					this.csvRaw.push(row);
-					this.csvPreview.push(row);
-				}
-				this.showToast('Parsed ' + this.csvPreview.length + ' rows', 'info');
-			};
-			reader.readAsText(file);
+		openShare(p) {
+			this.share = { show: true, p, to: p.shared_with || p.default_manager || '', note: p.share_note || '', busy: false };
 		},
-
-		parseCSVLine(line) {
-			const result = [];
-			let current = '';
-			let inQuotes = false;
-			for (let i = 0; i < line.length; i++) {
-				const ch = line[i];
-				if (ch === '"') { inQuotes = !inQuotes; }
-				else if (ch === ',' && !inQuotes) { result.push(current); current = ''; }
-				else { current += ch; }
-			}
-			result.push(current);
-			return result;
-		},
-
-		async importProspects() {
-			if (!this.selectedJob) { this.showToast('Select a job opening first', 'error'); return; }
-			if (!this.csvRaw.length) { this.showToast('No CSV data to import', 'error'); return; }
-			this.saving = true;
+		async doShare() {
+			if (!this.share.to) { this.notify('Choose who to share with.', 'error'); return; }
+			this.share.busy = true;
 			try {
-				// Call custom Server Script API
-				const res = await this.api('wf_import_prospects', {
-					job_opening: this.selectedJob,
-					prospects: JSON.stringify(this.csvRaw)
-				});
-				this.csvPreview = [];
-				this.csvRaw = [];
-				this.csvColumns = [];
-				if (this.$refs.fileInput) this.$refs.fileInput.value = '';
-				this.showToast('Prospects imported & scored!');
-				await this.loadProspects();
-			} catch (e) {
-				this.showToast('Import failed: ' + (e.message || e), 'error');
-			}
-			this.saving = false;
+				const r = await this.api(API + 'share_prospect', { prospect: this.share.p.name, share_with: this.share.to, note: this.share.note });
+				this.notify(r.message);
+				this.share.show = false;
+				await this.load();
+			} catch (e) { /* shown by frappe */ }
+			this.share.busy = false;
 		},
 
-		async sendInvite(prospect) {
-			this.saving = true;
+		openInvite(p) { this.inv = { show: true, p, busy: false }; },
+		async doInvite() {
+			this.inv.busy = true;
 			try {
-				await this.api('wf_send_invite', {
-					prospect_name: prospect.name
-				});
-				prospect.outreach_status = 'Invited';
-				prospect.invited_on = new Date().toISOString();
-				this.showToast('Invite sent to ' + prospect.prospect_name);
-			} catch (e) {
-				this.showToast('Failed to send invite', 'error');
-			}
-			this.saving = false;
-		},
-
-		async bulkInvite() {
-			const eligible = this.prospects.filter(p => p.match_score >= 80 && p.outreach_status === 'Pending');
-			if (!eligible.length) return;
-			if (!confirm('Send invites to ' + eligible.length + ' prospects with 80%+ match?')) return;
-			this.saving = true;
-			try {
-				await this.api('wf_bulk_invite', {
-					prospect_names: JSON.stringify(eligible.map(p => p.name))
-				});
-				eligible.forEach(p => {
-					p.outreach_status = 'Invited';
-					p.invited_on = new Date().toISOString();
-				});
-				this.showToast(eligible.length + ' invites sent!');
-			} catch (e) {
-				this.showToast('Bulk invite failed', 'error');
-			}
-			this.saving = false;
-		},
-
-		openDetail(prospect) { this.selectedProspect = prospect; this.showPanel = true; },
-
-		formatDate(d) {
-			if (!d) return '—';
-			return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-		},
-
-		showToast(msg, type = 'success') { this.toast = { show: true, msg, type }; }
+				const r = await this.api(API + 'invite_prospect', { prospect: this.inv.p.name });
+				this.notify(r.message);
+				this.inv.show = false;
+				await this.load();
+			} catch (e) { /* shown by frappe */ }
+			this.inv.busy = false;
+		}
 	}
 };
 </script>
 
 <style scoped>
-.tab-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-.tab-header h2 { margin: 0; font-size: 20px; font-weight: 600; }
-.upload-section { margin-bottom: 24px; }
-.upload-card { background: #fff; border: 2px dashed #d1d5db; border-radius: 12px; padding: 24px; }
-.upload-card h3 { margin: 0 0 16px; font-size: 16px; font-weight: 600; color: #374151; }
-.upload-row { display: flex; gap: 16px; margin-bottom: 12px; }
-.csv-hint { font-size: 12px; color: #9ca3af; margin: 8px 0 0; }
-.form-group { display: flex; flex-direction: column; gap: 6px; flex: 1; }
-.form-group label { font-size: 13px; font-weight: 600; color: #374151; }
-.form-input { padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; outline: none; width: 100%; box-sizing: border-box; }
-.form-input:focus { border-color: #4f46e5; }
-.file-input { padding: 8px; }
-.preview-section { margin-top: 16px; }
-.preview-section h4 { margin: 0 0 10px; font-size: 14px; color: #374151; }
-.preview-table-wrap { overflow-x: auto; border: 1px solid #e5e7eb; border-radius: 8px; }
-.preview-table { font-size: 13px; min-width: 600px; }
-.preview-table th { padding: 8px 12px; font-size: 11px; }
-.preview-table td { padding: 8px 12px; font-size: 13px; }
-.kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 16px; margin-bottom: 20px; }
-.filters-row { display: flex; gap: 12px; margin-bottom: 20px; }
-.search-input { flex: 1; padding: 10px 14px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; outline: none; min-width: 0; }
-.search-input:focus { border-color: #4f46e5; }
-.filter-select { padding: 10px 14px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; background: #fff; min-width: 130px; }
-.table-wrapper { background: #fff; border-radius: 10px; border: 1px solid #e5e7eb; overflow-x: auto; }
-.wf-table { width: 100%; border-collapse: collapse; min-width: 850px; }
-.wf-table th { text-align: left; padding: 12px 16px; font-size: 12px; font-weight: 600; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; white-space: nowrap; }
-.wf-table td { padding: 14px 16px; font-size: 14px; border-bottom: 1px solid #f3f4f6; }
-.clickable-row { cursor: pointer; }
-.clickable-row:hover { background: #f9fafb; }
-.name-cell { font-weight: 600; color: #111827; }
-.skills-cell { color: #6b7280; font-size: 13px; }
-.center-text { text-align: center; color: #9ca3af; }
-.text-muted { color: #9ca3af; font-size: 13px; }
-.score-badge { display: inline-block; padding: 2px 10px; border-radius: 10px; font-size: 12px; font-weight: 700; }
-.score-high { background: #dcfce7; color: #166534; }
-.score-mid { background: #ffedd5; color: #9a3412; }
-.score-low { background: #fee2e2; color: #991b1b; }
-.btn-primary { background: #4f46e5; color: #fff; border: none; padding: 10px 20px; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 14px; }
-.btn-primary:hover { background: #4338ca; }
-.btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
-.btn-invite { background: #10b981; color: #fff; border: none; padding: 6px 14px; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; }
-.btn-invite:hover { background: #059669; }
-.btn-invite:disabled { opacity: 0.6; cursor: not-allowed; }
-.detail-content { display: flex; flex-direction: column; gap: 16px; }
-.detail-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #f3f4f6; }
-.detail-label { font-size: 13px; font-weight: 600; color: #6b7280; }
-.detail-section { padding: 8px 0; }
-.profile-link { color: #4f46e5; font-weight: 600; text-decoration: none; }
-.profile-link:hover { text-decoration: underline; }
-.skills-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-.skill-tag { padding: 4px 12px; border-radius: 16px; font-size: 12px; font-weight: 500; background: #eef2ff; color: #4338ca; }
-.empty-state { text-align: center; padding: 60px 20px; }
-.empty-icon { font-size: 48px; margin-bottom: 12px; }
-.empty-state h3 { font-size: 18px; color: #374151; margin: 0 0 8px; }
-.empty-state p { color: #9ca3af; font-size: 14px; }
-
-@media (max-width: 1024px) {
-	.kpi-row { grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; }
-	.wf-table th, .wf-table td { padding: 10px 12px; }
-}
-@media (max-width: 768px) {
-	.tab-header { flex-direction: column; align-items: flex-start; gap: 12px; }
-	.upload-row { flex-direction: column; gap: 10px; }
-	.filters-row { flex-direction: column; gap: 8px; }
-	.filter-select { width: 100%; min-width: auto; }
-	.upload-card { padding: 16px; }
+.ts-head { display: flex; align-items: flex-end; gap: 16px; flex-wrap: wrap; margin-bottom: 22px; }
+.ts-head h1 { margin: 0; font-size: 26px; font-weight: 600; letter-spacing: -.02em; color: var(--wf-ink); }
+.ts-head p { margin: 5px 0 0; color: var(--wf-mut); max-width: 72ch; }
+.ts-head .btn { margin-left: auto; }
+.kpis { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin-bottom: 22px; }
+.kpi { background: #fff; border: 1px solid var(--wf-line); border-radius: 14px; padding: 16px; display: flex; flex-direction: column; }
+.kpi .n { font-size: 28px; font-weight: 600; color: var(--wf-primary); line-height: 1.1; font-variant-numeric: tabular-nums; }
+.kpi .l { font-size: 13px; color: var(--wf-mut); margin-top: 4px; }
+.panel { background: #fff; border: 1px solid var(--wf-line); border-radius: 14px; }
+.toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 16px 20px 8px; }
+.search { position: relative; flex: 1; min-width: 220px; }
+.search svg { position: absolute; left: 12px; top: 11px; width: 18px; height: 18px; fill: none; stroke: var(--wf-mut-2); stroke-width: 1.8; }
+.search .in { padding-left: 38px; }
+.in { box-sizing: border-box; width: 100%; height: 40px; border: 1px solid var(--wf-line); border-radius: 9px; padding: 0 12px; background: #fff; font: inherit; color: var(--wf-ink); }
+.in:focus { outline: none; border-color: var(--wf-primary-2); box-shadow: 0 0 0 3px var(--wf-primary-tint); }
+.sel { width: auto; min-width: 200px; }
+.ta { height: auto; padding: 10px 12px; }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip { height: 32px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--wf-line); background: #fff; color: var(--wf-mut); font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; }
+.chip .c { opacity: .7; margin-left: 2px; }
+.chip.on { background: var(--wf-primary); border-color: var(--wf-primary); color: #fff; }
+.t { width: 100%; border-collapse: collapse; }
+.t th { text-align: left; font-size: 12.5px; font-weight: 500; color: var(--wf-mut-2); padding: 12px 16px 10px; border-bottom: 1px solid var(--wf-line); }
+.t td { padding: 13px 16px; border-bottom: 1px solid var(--wf-line-2); vertical-align: middle; }
+.t tbody tr { cursor: pointer; }
+.t tbody tr:hover td { background: #FAFAFD; }
+.t th:first-child, .t td:first-child { padding-left: 20px; }
+.ttl { font-weight: 600; color: var(--wf-ink); }
+.sub { font-size: 13px; color: var(--wf-mut); }
+.mr { margin-top: 3px; }
+.acts { white-space: nowrap; text-align: right; }
+.acts .btn + .btn { margin-left: 6px; }
+.btn { height: 38px; padding: 0 15px; border-radius: 9px; border: 1px solid var(--wf-line); background: #fff; color: var(--wf-ink-2); font: inherit; font-weight: 500; font-size: 14px; display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
+.btn:hover { background: var(--wf-line-2); }
+.btn.pri { background: var(--wf-primary); border-color: var(--wf-primary); color: #fff; }
+.btn.pri:hover { background: var(--wf-primary-2); }
+.btn.sm { height: 32px; padding: 0 11px; font-size: 13px; }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.btn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.score { display: inline-grid; place-items: center; min-width: 44px; height: 24px; padding: 0 8px; border-radius: 6px; font-size: 12px; font-weight: 700; white-space: nowrap; }
+.score.big { min-width: 64px; height: 40px; font-size: 16px; border-radius: 10px; }
+.s-A { background: var(--wf-ok-tint); color: var(--wf-ok); }
+.s-B { background: var(--wf-primary-tint); color: var(--wf-primary-2); }
+.s-C, .s-D { background: var(--wf-hold-tint); color: var(--wf-hold); }
+.s-X, .s-pend { background: #F3F4F6; color: var(--wf-mut); font-weight: 600; }
+.empty { text-align: center; padding: 48px 20px; }
+.empty h3 { margin: 0 0 6px; font-size: 17px; font-weight: 600; }
+.empty p { margin: 0; color: var(--wf-mut); }
+.fld { margin-bottom: 16px; }
+.fld label { display: block; font-weight: 500; margin-bottom: 6px; }
+.req { color: var(--wf-bad); }
+.hint { font-size: 12.5px; color: var(--wf-mut); margin-top: 6px; }
+.drop { width: 100%; border: 1.5px dashed var(--wf-line); border-radius: 12px; background: var(--wf-line-2); padding: 20px; text-align: center; cursor: pointer; font: inherit; color: var(--wf-mut); display: flex; flex-direction: column; gap: 4px; }
+.drop b { color: var(--wf-ink); }
+.drop:hover { border-color: var(--wf-primary-soft); }
+.note { background: var(--wf-primary-tint); color: var(--wf-primary-2); border-radius: 10px; padding: 10px 14px; font-size: 13px; margin-bottom: 14px; }
+.note.warn, .warn { background: var(--wf-amber-tint); color: var(--wf-amber-ink); border-radius: 10px; padding: 10px 14px; font-size: 13px; }
+.result { background: var(--wf-ok-tint); color: var(--wf-ok); border-radius: 10px; padding: 12px 14px; font-size: 13.5px; }
+.muted { color: var(--wf-mut); }
+.pills { display: flex; gap: 10px; align-items: center; margin-bottom: 16px; }
+.ai { display: flex; gap: 16px; align-items: flex-start; border: 1px solid var(--wf-line); border-radius: 12px; padding: 14px 16px; margin-bottom: 20px; }
+.ai p { margin: 4px 0 0; }
+.kv { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 20px; margin: 0 0 20px; }
+.kv dt { font-size: 12.5px; color: var(--wf-mut-2); }
+.kv dd { margin: 2px 0 0; font-weight: 500; word-break: break-word; }
+.sec { margin-bottom: 20px; }
+.sec h4 { margin: 0 0 8px; font-size: 13.5px; font-weight: 600; }
+.sec p { margin: 0 0 4px; }
+.tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.tag { height: 26px; padding: 0 10px; border-radius: 7px; background: var(--wf-primary-tint); color: var(--wf-primary-2); display: inline-flex; align-items: center; font-size: 12.5px; font-weight: 500; }
+@media (max-width: 900px) {
+	.kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+	.hs { display: none; }
+	.kv { grid-template-columns: 1fr; }
 }
 </style>

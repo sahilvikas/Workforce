@@ -24,7 +24,9 @@ const TONES = {
 	'Verified Correct': 'ok', 'Partially Correct': 'hold', 'Incorrect': 'bad', 'No Response': 'hold',
 	'Confirmed': 'ok', 'Mismatch': 'bad', 'Not Checked': 'grey',
 	// talent search / misc
-	'Pending': 'hold', 'Invited': 'primary', 'Responded': 'ok', 'Declined': 'bad'
+	'Pending': 'hold', 'Invited': 'primary', 'Responded': 'ok', 'Declined': 'bad',
+	'New': 'primary', 'Shared': 'hold', 'Interested': 'ok', 'Not Interested': 'bad',
+	'Screened': 'ok', 'Archived': 'grey'
 };
 
 export function toneFor(label) {

@@ -19,9 +19,14 @@
 # exists in the safe_exec sandbox — here we use the requests library directly.
 #
 # ---------------------------------------------------------------------------
-# 9 Sep 2026 — ONLY CHANGE IN THIS VERSION: @frappe.whitelist() added to
-# run_resume_screening (see the comment above that function). Nothing else
-# in this file has been modified.
+# 9 Sep 2026 — @frappe.whitelist() added to run_resume_screening.
+# 11 Sep 2026 — two changes:
+#   1. Only screen applicants whose screening is still "Pending". Before, any
+#      unscored applicant was picked up, which overwrote HR's decision on old
+#      records (an Onboarded and a Rejected candidate became "Screening Failed").
+#   2. Talent search: the same run also scores imported WF Prospect profiles
+#      (from their text fields; there is no resume file). Isolated in its own
+#      try/except so it can never affect applicant screening.
 # ---------------------------------------------------------------------------
 
 import json
@@ -65,7 +70,7 @@ def run_resume_screening():
         filters={
             "resume": ["is", "set"],
             "ai_score": ["in", [None, 0]],
-            "screening_status": ["not in", ["Screening Failed"]],
+            "screening_status": "Pending",
         },
         fields=["name"],
         order_by="creation asc",
@@ -92,6 +97,12 @@ def run_resume_screening():
                 frappe.db.commit()
             except Exception:
                 pass
+
+    # Talent search profiles. Fully isolated: nothing here can affect applicants.
+    try:
+        _screen_prospects(api_key, model)
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "Prospect screening run failed")
 
 
 def _screen_one(applicant_id, api_key, model):
@@ -244,3 +255,118 @@ def _score_with_azure(api_key, model, job_title, skills_text, job_desc, resume_t
     if rt.startswith("```"):
         rt = rt.replace("```json", "").replace("```", "").strip()
     return json.loads(rt)
+
+
+# ---------------------------------------------------------------------------
+# Talent search (WF Prospect) screening, 11 Sep 2026
+# ---------------------------------------------------------------------------
+PROSPECT_BATCH = 20
+
+# Text used for scoring. Name, email, phone, gender, age and address are never
+# sent to the model: they are not needed and must not influence the score.
+PROSPECT_TEXT_FIELDS = (
+    ("Resume headline", "resume_headline"),
+    ("Summary", "summary"),
+    ("Key skills", "key_skills"),
+    ("Total experience", "total_experience"),
+    ("Current designation", "current_designation"),
+    ("Current company", "current_company"),
+    ("Role", "role"),
+    ("Department", "department"),
+    ("Industry", "industry"),
+    ("Current location", "current_location"),
+    ("Preferred locations", "preferred_locations"),
+    ("Notice period", "notice_period"),
+    ("Graduation", "ug_degree"),
+    ("Graduation specialization", "ug_specialization"),
+    ("Post graduation", "pg_degree"),
+    ("Post graduation specialization", "pg_specialization"),
+)
+
+
+def _screen_prospects(api_key, model):
+    if not frappe.db.exists("DocType", "WF Prospect"):
+        return
+    rows = frappe.get_all(
+        "WF Prospect",
+        filters={"screening_status": "Pending"},
+        fields=["name"],
+        order_by="creation asc",
+        limit_page_length=PROSPECT_BATCH,
+        ignore_permissions=True,
+    )
+    for row in rows:
+        try:
+            _screen_prospect(row["name"], api_key, model)
+        except Exception:
+            frappe.log_error(frappe.get_traceback(), "Prospect screening failed: " + row["name"])
+            try:
+                frappe.db.set_value(
+                    "WF Prospect",
+                    row["name"],
+                    {"screening_status": "Failed", "ai_notes": "Automatic screening could not process this profile."},
+                    update_modified=False,
+                )
+                frappe.db.commit()
+            except Exception:
+                pass
+
+
+def _screen_prospect(prospect_id, api_key, model):
+    p = frappe.get_doc("WF Prospect", prospect_id)
+    lines = []
+    for label, field in PROSPECT_TEXT_FIELDS:
+        val = (p.get(field) or "").strip()
+        if val:
+            lines.append(label + ": " + val)
+    text = "\n".join(lines)
+    if len(text) < 30:
+        frappe.db.set_value(
+            "WF Prospect",
+            prospect_id,
+            {"screening_status": "Failed", "ai_notes": "Not enough profile detail to score. Please review manually."},
+            update_modified=False,
+        )
+        frappe.db.commit()
+        return
+
+    job_title, job_desc, skills_text = _job_context(p.job_opening)
+    parsed = _score_with_azure(api_key, model, job_title, skills_text, job_desc, text)
+
+    score = 0
+    if parsed.get("score") is not None:
+        score = int(float(parsed.get("score")))
+    matched = parsed.get("matched_skills") or []
+    missing = parsed.get("missing_skills") or []
+    frappe.db.set_value(
+        "WF Prospect",
+        prospect_id,
+        {
+            "ai_score": score if score > 0 else 1,
+            "ai_grade": parsed.get("grade") or "",
+            "ai_summary": (parsed.get("summary") or "")[:500],
+            "ai_notes": ("Matched: " + ", ".join(matched) + " | Missing: " + ", ".join(missing))[:500],
+            "screening_status": "Screened",
+        },
+        update_modified=False,
+    )
+    frappe.db.commit()
+
+
+def _job_context(job_opening):
+    job_title, job_desc, skills = "", "", []
+    if job_opening and frappe.db.exists("WF Job Opening", job_opening):
+        j = frappe.db.get_value("WF Job Opening", job_opening, ["job_title", "description"], as_dict=True)
+        job_title = j.get("job_title") or ""
+        job_desc = j.get("description") or ""
+        for s in frappe.get_all(
+            "WF Required Skill",
+            filters={"parent": job_opening},
+            fields=["skill_name", "is_mandatory"],
+            ignore_permissions=True,
+        ):
+            tag = s.get("skill_name") or ""
+            if s.get("is_mandatory"):
+                tag = tag + " (mandatory)"
+            skills.append(tag)
+    return job_title, job_desc, (", ".join(skills) if skills else "None specified")

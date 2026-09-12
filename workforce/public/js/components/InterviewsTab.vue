@@ -1,713 +1,373 @@
 <template>
-	<div class="interviews-tab">
+	<div class="iv">
 		<Toast :visible="toast.show" :message="toast.msg" :type="toast.type" @hide="toast.show = false" />
 
-		<div class="tab-header">
-			<h2>Interviews</h2>
-			<div class="view-toggle">
-				<button :class="{ active: view === 'calendar' }" @click="view = 'calendar'">Calendar</button>
-				<button :class="{ active: view === 'list' }" @click="view = 'list'">List</button>
+		<div class="head">
+			<div>
+				<h1>Interviews</h1>
+				<p>Every round on one calendar. Invites and Meet links go out from hr@ automatically; interviewers get a feedback link after.</p>
+			</div>
+			<div class="seg">
+				<button type="button" :class="{ on: view === 'week' }" @click="view = 'week'">Week</button>
+				<button type="button" :class="{ on: view === 'list' }" @click="view = 'list'">List</button>
 			</div>
 		</div>
 
-		<!-- Pending Feedback Banner (for interviewers) -->
-		<div v-if="pendingFeedback.length" class="pending-banner">
-			<div class="pending-header">
-				<span class="pending-icon">⚡</span>
-				<h3>Pending Feedback ({{ pendingFeedback.length }})</h3>
-				<span class="pending-hint">These interviews are completed but awaiting your feedback</span>
+		<div v-if="pendingFeedback.length" class="note">
+			<b>{{ pendingFeedback.length }} interview{{ pendingFeedback.length > 1 ? 's are' : ' is' }} waiting for feedback.</b>
+			<button class="btn sm" type="button" @click="view = 'list'; onlyPending = true">Show them</button>
+		</div>
+
+		<div v-if="loading" class="panel empty"><p>Loading…</p></div>
+
+		<!-- week -->
+		<section v-else-if="view === 'week'" class="panel">
+			<div class="weekbar">
+				<button class="btn sm" type="button" @click="week--" aria-label="Previous week">‹</button>
+				<button class="btn sm" type="button" @click="week = 0">Today</button>
+				<button class="btn sm" type="button" @click="week++" aria-label="Next week">›</button>
+				<h2>{{ weekLabel }}</h2>
 			</div>
-			<div class="pending-cards">
-				<div v-for="iv in pendingFeedback" :key="iv.name" class="pending-card" @click="openDetail(iv)">
-					<div class="pending-card-left">
-						<div class="pending-name">{{ iv.applicant_name || iv.applicant }}</div>
-						<div class="pending-meta">R{{ iv.round_number }} · {{ iv.round_name || 'Interview' }} · {{ formatDate(iv.scheduled_date) }}</div>
-					</div>
-					<button class="btn-feedback" @click.stop="openDetail(iv)">Give Feedback</button>
+			<div class="week">
+				<div v-for="d in days" :key="d.iso" class="day" :class="{ today: d.isToday, weekend: d.isWeekend }">
+					<h5>{{ d.dow }} <span>{{ d.label }}</span><em v-if="d.isToday">Today</em></h5>
+					<button v-for="iv in onDay(d.iso)" :key="iv.name" class="ev" :class="evClass(iv)" type="button" @click="open(iv)">
+						<span class="num">{{ (iv.scheduled_time || '').slice(0, 5) }}</span>
+						<b>{{ iv.applicant_name }}</b>
+						Round {{ iv.round_number }}, {{ iv.round_name }}
+						<span class="sub">with {{ iv.interviewer_name || iv.interviewer }}</span>
+					</button>
+					<div v-if="!onDay(d.iso).length" class="none">—</div>
 				</div>
 			</div>
-		</div>
+		</section>
 
-		<!-- KPIs -->
-		<div class="kpi-row">
-			<KpiCard label="Total" :value="interviews.length" />
-			<KpiCard label="Scheduled" :value="countByStatus('Scheduled')" />
-			<KpiCard label="Completed" :value="countByStatus('Completed')" />
-			<KpiCard label="Cancelled" :value="countByStatus('Cancelled')" />
-		</div>
-
-		<!-- Filters -->
-		<div class="filters-row">
-			<input v-model="searchQuery" type="text" placeholder="Search by candidate, interviewer..." class="search-input" />
-			<select v-model="statusFilter" class="filter-select">
-				<option value="">All Statuses</option>
-				<option value="Scheduled">Scheduled</option>
-				<option value="In Progress">In Progress</option>
-				<option value="Completed">Completed</option>
-				<option value="Cancelled">Cancelled</option>
-			</select>
-		</div>
-
-		<!-- Calendar View -->
-		<div v-if="view === 'calendar'" class="calendar-section">
-			<div class="cal-nav">
-				<button class="cal-nav-btn" @click="prevWeek">&larr;</button>
-				<h3>{{ weekLabel }}</h3>
-				<button class="cal-nav-btn" @click="nextWeek">&rarr;</button>
-				<button class="cal-today-btn" @click="goToday">Today</button>
+		<!-- list -->
+		<section v-else class="panel">
+			<div class="toolbar">
+				<input v-model="q" class="in search" placeholder="Search by candidate or position" />
+				<button type="button" class="chip" :class="{ on: onlyPending }" @click="onlyPending = !onlyPending">Waiting for feedback <span class="c">{{ pendingFeedback.length }}</span></button>
 			</div>
-			<div class="cal-grid">
-				<div v-for="day in weekDays" :key="day.date" class="cal-day" :class="{ today: day.isToday }">
-					<div class="cal-day-header">
-						<span class="cal-day-name">{{ day.dayName }}</span>
-						<span class="cal-day-date">{{ day.dateLabel }}</span>
-					</div>
-					<div class="cal-day-events">
-						<div v-for="iv in interviewsOnDate(day.date)" :key="iv.name" class="cal-event" :class="'event-' + iv.status.toLowerCase().replace(/ /g, '-')" @click="openDetail(iv)">
-							<div class="event-time">{{ iv.scheduled_time || 'TBD' }}</div>
-							<div class="event-name">{{ iv.applicant_name || iv.applicant }}</div>
-							<div class="event-round">R{{ iv.round_number }} · {{ iv.round_name || 'Interview' }}</div>
-						</div>
-						<div v-if="interviewsOnDate(day.date).length === 0" class="cal-empty">—</div>
-					</div>
-				</div>
-			</div>
-		</div>
-
-		<!-- List View -->
-		<div v-else class="table-wrapper">
-			<table class="wf-table">
-				<thead>
-					<tr>
-						<th>Candidate</th>
-						<th>Job Opening</th>
-						<th>Round</th>
-						<th>Interviewer</th>
-						<th>Date</th>
-						<th>Time</th>
-						<th>Rating</th>
-						<th>Status</th>
-						<th>Feedback</th>
-					</tr>
-				</thead>
+			<table class="t">
+				<thead><tr><th>When</th><th>Candidate</th><th class="hs">Round</th><th class="hs">Interviewer</th><th>Status</th><th class="hs">Rating</th></tr></thead>
 				<tbody>
-					<tr v-if="loading"><td colspan="9" class="center-text">Loading...</td></tr>
-					<tr v-else-if="filteredInterviews.length === 0"><td colspan="9" class="center-text">No interviews found</td></tr>
-					<tr v-for="iv in filteredInterviews" :key="iv.name" class="clickable-row" @click="openDetail(iv)">
-						<td class="name-cell">{{ iv.applicant_name || iv.applicant }}</td>
-						<td>{{ iv.job_title || iv.job_opening || '—' }}</td>
-						<td>R{{ iv.round_number }} · {{ iv.round_name || 'Interview' }}</td>
-						<td>{{ iv.interviewer || '—' }}</td>
-						<td>{{ formatDate(iv.scheduled_date) }}</td>
-						<td>{{ iv.scheduled_time || '—' }}</td>
-						<td>
-							<span v-if="iv.rating" class="rating-stars">{{ '★'.repeat(iv.rating) }}{{ '☆'.repeat(5 - iv.rating) }}</span>
-							<span v-else class="text-muted">—</span>
-						</td>
+					<tr v-for="iv in listRows" :key="iv.name" @click="open(iv)">
+						<td class="num"><b>{{ shortDate(iv.scheduled_date) }}</b><div class="sub">{{ (iv.scheduled_time || '').slice(0, 5) }}</div></td>
+						<td><div class="ttl">{{ iv.applicant_name }}</div><div class="sub">{{ iv.job_title }}</div></td>
+						<td class="hs">{{ iv.round_number }}. {{ iv.round_name }}</td>
+						<td class="hs">{{ iv.interviewer_name || iv.interviewer }}</td>
 						<td><Badge :label="iv.status" /></td>
-						<td @click.stop>
-							<span v-if="iv.status === 'Completed' && iv.rating" class="feedback-done">✓ Done</span>
-							<button v-else-if="iv.status === 'Scheduled' || iv.status === 'In Progress'" class="btn-feedback-sm" @click="openDetail(iv)">Give Feedback</button>
-							<span v-else class="text-muted">—</span>
-						</td>
+						<td class="hs num">{{ iv.rating ? iv.rating + ' / 5' : '—' }}</td>
 					</tr>
 				</tbody>
 			</table>
-		</div>
+			<div v-if="!listRows.length" class="empty"><h3>Nothing here</h3><p>Try another search, or clear the filter.</p></div>
+		</section>
 
-		<!-- Detail Panel -->
-		<DetailPanel :visible="showPanel" :title="selected ? (selected.applicant_name || selected.applicant) : ''" @close="closePanel">
-			<div v-if="selected" class="detail-content">
-				<!-- Interview Info -->
-				<div class="detail-row"><span class="detail-label">Status</span><Badge :label="selected.status" /></div>
-				<div class="detail-row"><span class="detail-label">Candidate</span><span>{{ selected.applicant_name || selected.applicant }}</span></div>
-				<div class="detail-row"><span class="detail-label">Job Opening</span><span>{{ selected.job_title || selected.job_opening || '—' }}</span></div>
-				<div class="detail-row"><span class="detail-label">Round</span><span>Round {{ selected.round_number }}: {{ selected.round_name || 'Interview' }}</span></div>
-				<div class="detail-row"><span class="detail-label">Interviewer</span><span>{{ selected.interviewer || '—' }}</span></div>
-				<div class="detail-row"><span class="detail-label">Date</span><span>{{ formatDate(selected.scheduled_date) }}</span></div>
-				<div class="detail-row"><span class="detail-label">Time</span><span>{{ selected.scheduled_time || '—' }}</span></div>
-				<div class="detail-row"><span class="detail-label">Duration</span><span>{{ selected.duration_minutes ? selected.duration_minutes + ' min' : '—' }}</span></div>
-				<div v-if="selected.google_meet_link" class="detail-row">
-					<span class="detail-label">Meeting Link</span>
-					<a :href="selected.google_meet_link" target="_blank" class="meet-link">Join Google Meet</a>
-				</div>
-
-				<!-- Previous Round Feedback (show for context) -->
-				<div v-if="previousRounds.length" class="detail-section">
-					<span class="detail-label">Previous Rounds</span>
-					<div v-for="pr in previousRounds" :key="pr.name" class="prev-round-card">
-						<div class="prev-round-header">
-							<span>R{{ pr.round_number }}: {{ pr.round_name || 'Interview' }}</span>
-							<span v-if="pr.rating" class="rating-stars-sm">{{ '★'.repeat(pr.rating) }}{{ '☆'.repeat(5 - pr.rating) }}</span>
-						</div>
-						<div v-if="pr.recommendation" class="prev-round-rec"><Badge :label="pr.recommendation" /></div>
-						<div v-if="pr.feedback" class="prev-round-feedback">{{ truncate(pr.feedback, 150) }}</div>
+		<!-- interview drawer -->
+		<DetailPanel :visible="!!sel" :title="sel ? sel.applicant_name : ''" @close="sel = null">
+			<template v-if="sel">
+				<div class="pills"><Badge :label="sel.status" /><span class="sub">Round {{ sel.round_number }}, {{ sel.round_name }}</span></div>
+				<dl class="kv">
+					<div><dt>Position</dt><dd>{{ sel.job_title }}</dd></div>
+					<div><dt>Interviewer</dt><dd>{{ sel.interviewer_name || sel.interviewer }}</dd></div>
+					<div><dt>When</dt><dd>{{ shortDate(sel.scheduled_date) }} at {{ (sel.scheduled_time || '').slice(0, 5) }} IST</dd></div>
+					<div><dt>Duration</dt><dd>{{ sel.duration_minutes || 30 }} min</dd></div>
+				</dl>
+				<div class="sec" v-if="sel.google_meet_link && sel.status === 'Scheduled'">
+					<h4>Meeting</h4>
+					<div class="row">
+						<a class="btn" :href="sel.google_meet_link" target="_blank" rel="noopener">Join Google Meet</a>
+						<button class="btn" type="button" @click="copy(sel.google_meet_link)">Copy link</button>
 					</div>
 				</div>
-
-				<!-- Completed feedback (read-only) -->
-				<div v-if="selected.status === 'Completed'" class="detail-section completed-section">
-					<h4>Feedback Submitted</h4>
-					<div class="detail-row"><span class="detail-label">Rating</span><span class="rating-stars">{{ '★'.repeat(selected.rating || 0) }}{{ '☆'.repeat(5 - (selected.rating || 0)) }}</span></div>
-					<div class="detail-row"><span class="detail-label">Recommendation</span><Badge v-if="selected.recommendation && selected.recommendation !== 'Pending'" :label="selected.recommendation" /><span v-else>—</span></div>
-					<div v-if="selected.feedback" class="detail-section"><span class="detail-label">Feedback Notes</span><div class="detail-desc" v-html="selected.feedback"></div></div>
-				</div>
-
-				<!-- Feedback Form (when Scheduled or In Progress) -->
-				<div v-if="selected.status === 'Scheduled' || selected.status === 'In Progress'" class="feedback-form">
-					<h4>Submit Interview Feedback</h4>
-
-					<div class="form-group">
-						<label>Overall Rating *</label>
-						<div class="star-picker">
-							<span v-for="n in 5" :key="n" class="star" :class="{ filled: feedbackForm.rating >= n }" @click="feedbackForm.rating = n" @mouseenter="hoverRating = n" @mouseleave="hoverRating = 0">★</span>
-							<span class="rating-label">{{ ratingLabel }}</span>
-						</div>
-					</div>
-
-					<div class="form-group">
-						<label>Recommendation *</label>
-						<div class="rec-options">
-							<label v-for="rec in recommendations" :key="rec.value" class="rec-option" :class="{ selected: feedbackForm.recommendation === rec.value, [rec.color]: true }">
-								<input type="radio" :value="rec.value" v-model="feedbackForm.recommendation" />
-								<span class="rec-icon">{{ rec.icon }}</span>
-								<span>{{ rec.label }}</span>
-							</label>
-						</div>
-					</div>
-
-					<div class="form-group">
-						<label>Technical Skills (if applicable)</label>
-						<div class="skill-rating-row">
-							<span class="skill-label">Problem Solving</span>
-							<div class="mini-stars">
-								<span v-for="n in 5" :key="n" class="mini-star" :class="{ filled: feedbackForm.problemSolving >= n }" @click="feedbackForm.problemSolving = n">★</span>
-							</div>
-						</div>
-						<div class="skill-rating-row">
-							<span class="skill-label">Communication</span>
-							<div class="mini-stars">
-								<span v-for="n in 5" :key="n" class="mini-star" :class="{ filled: feedbackForm.communication >= n }" @click="feedbackForm.communication = n">★</span>
-							</div>
-						</div>
-						<div class="skill-rating-row">
-							<span class="skill-label">Domain Knowledge</span>
-							<div class="mini-stars">
-								<span v-for="n in 5" :key="n" class="mini-star" :class="{ filled: feedbackForm.domainKnowledge >= n }" @click="feedbackForm.domainKnowledge = n">★</span>
-							</div>
-						</div>
-					</div>
-
-					<div class="form-group">
-						<label>Strengths</label>
-						<textarea v-model="feedbackForm.strengths" class="form-input form-textarea" rows="2" placeholder="What stood out positively..."></textarea>
-					</div>
-
-					<div class="form-group">
-						<label>Areas for Improvement</label>
-						<textarea v-model="feedbackForm.improvements" class="form-input form-textarea" rows="2" placeholder="What could be better..."></textarea>
-					</div>
-
-					<div class="form-group">
-						<label>Detailed Feedback</label>
-						<textarea v-model="feedbackForm.feedback" class="form-input form-textarea" rows="4" placeholder="Detailed notes from the interview..."></textarea>
-					</div>
-
-					<div class="feedback-actions">
-						<button class="btn-primary" @click="submitFeedback" :disabled="saving || !feedbackForm.rating || !feedbackForm.recommendation">
-							{{ saving ? 'Submitting...' : 'Submit Feedback' }}
-						</button>
-						<span class="feedback-hint">Submitting will mark this interview as Completed</span>
+				<div class="sec" v-if="sel.rating">
+					<h4>Feedback</h4>
+					<div class="box">
+						<b class="num">{{ sel.rating }} / 5</b>, {{ sel.recommendation }}
+						<p v-if="sel.feedback" class="pre">{{ sel.feedback }}</p>
 					</div>
 				</div>
+			</template>
+			<template #actions v-if="sel && sel.status === 'Scheduled'">
+				<button class="btn" type="button" @click="openReschedule">Reschedule</button>
+				<button class="btn dan" type="button" @click="cancel.show = true">Cancel interview</button>
+				<button class="btn pri" type="button" @click="openFeedback">Give feedback</button>
+			</template>
+		</DetailPanel>
 
-				<!-- Reschedule (HR only, when Scheduled) -->
-				<div v-if="selected.status === 'Scheduled' && isHR" class="detail-section reschedule-section">
-					<h4>Reschedule</h4>
-					<div class="form-row">
-						<div class="form-group"><label>New Date</label><input v-model="rescheduleForm.date" type="date" class="form-input" /></div>
-						<div class="form-group"><label>New Time</label><input v-model="rescheduleForm.time" type="time" class="form-input" /></div>
-					</div>
-					<button class="btn-secondary" @click="reschedule" :disabled="saving || !rescheduleForm.date">{{ saving ? 'Saving...' : 'Reschedule' }}</button>
-				</div>
-
-				<!-- Cancel (HR only, when Scheduled) -->
-				<div v-if="selected.status === 'Scheduled' && isHR" class="detail-section">
-					<button class="btn-danger" @click="cancelInterview">Cancel Interview</button>
+		<!-- feedback -->
+		<Dialog :visible="fb.show" title="Interview feedback" submit-label="Submit feedback" :loading="fb.busy" size="lg" @close="fb.show = false" @submit="doFeedback">
+			<p class="sub top" v-if="sel">Round {{ sel.round_number }}, {{ sel.round_name }} with {{ sel.applicant_name }}</p>
+			<div class="fld">
+				<label>Overall rating <span class="req">*</span></label>
+				<div class="stars">
+					<button v-for="n in 5" :key="n" type="button" :class="{ on: fb.rating >= n }" @click="fb.rating = n" :aria-label="n + ' stars'">★</button>
+					<span class="sub">{{ ratingLabel }}</span>
 				</div>
 			</div>
-		</DetailPanel>
+			<div class="fld">
+				<label>Recommendation <span class="req">*</span></label>
+				<div class="seg wrap">
+					<button v-for="r in recommendations" :key="r" type="button" :class="{ on: fb.recommendation === r }" @click="fb.recommendation = r">{{ r }}</button>
+				</div>
+			</div>
+			<div class="grid">
+				<div class="fld" v-for="s in skills" :key="s.key">
+					<label>{{ s.label }}</label>
+					<select v-model.number="fb[s.key]" class="in">
+						<option :value="0">Not rated</option>
+						<option v-for="n in 5" :key="n" :value="n">{{ n }}</option>
+					</select>
+				</div>
+			</div>
+			<div class="fld"><label>Strengths</label><textarea v-model="fb.strengths" class="in ta" rows="2" placeholder="What stood out"></textarea></div>
+			<div class="fld"><label>Areas to improve</label><textarea v-model="fb.improve" class="in ta" rows="2" placeholder="What could be better"></textarea></div>
+			<div class="fld"><label>Detailed notes</label><textarea v-model="fb.notes" class="in ta" rows="4"></textarea></div>
+		</Dialog>
+
+		<!-- reschedule -->
+		<Dialog :visible="res.show" title="Reschedule the interview" submit-label="Reschedule" :loading="res.busy" @close="res.show = false" @submit="doReschedule">
+			<p class="sub top">The candidate and interviewer are told the new time. The Meet link stays the same.</p>
+			<div class="grid">
+				<div class="fld"><label>New date <span class="req">*</span></label><input v-model="res.date" type="date" class="in" /></div>
+				<div class="fld"><label>New time</label><input v-model="res.time" type="time" class="in" /></div>
+			</div>
+		</Dialog>
+
+		<!-- cancel -->
+		<Dialog :visible="cancel.show" title="Cancel this interview?" submit-label="Cancel interview" :loading="cancel.busy" @close="cancel.show = false" @submit="doCancel">
+			<p class="sub top">The candidate and interviewer are told, and the calendar event is removed.</p>
+			<div class="fld"><label>Reason</label><textarea v-model="cancel.reason" class="in ta" rows="3" placeholder="Optional"></textarea></div>
+		</Dialog>
 	</div>
 </template>
 
 <script>
 import Badge from './shared/Badge.vue';
-import KpiCard from './shared/KpiCard.vue';
+import Dialog from './shared/Dialog.vue';
 import DetailPanel from './shared/DetailPanel.vue';
 import Toast from './shared/Toast.vue';
+import { shortDate } from './utils/time.js';
 
 export default {
 	name: 'InterviewsTab',
-	components: { Badge, KpiCard, DetailPanel, Toast },
-
+	components: { Badge, Dialog, DetailPanel, Toast },
 	data() {
 		return {
-			interviews: [],
-			previousRounds: [],
-			loading: false,
-			saving: false,
-			isHR: false,
-			view: 'calendar',
-			searchQuery: '',
-			statusFilter: '',
-			showPanel: false,
-			selected: null,
-			weekOffset: 0,
-			hoverRating: 0,
-			feedbackForm: {
-				rating: 0,
-				recommendation: '',
-				feedback: '',
-				strengths: '',
-				improvements: '',
-				problemSolving: 0,
-				communication: 0,
-				domainKnowledge: 0
-			},
-			rescheduleForm: { date: '', time: '' },
+			loading: true, interviews: [], view: 'week', week: 0, q: '', onlyPending: false,
+			sel: null,
+			fb: { show: false, rating: 0, recommendation: '', problem: 0, communication: 0, domain: 0, strengths: '', improve: '', notes: '', busy: false },
+			res: { show: false, date: '', time: '', busy: false },
+			cancel: { show: false, reason: '', busy: false },
 			toast: { show: false, msg: '', type: 'success' },
-			recommendations: [
-				{ value: 'Strongly Recommend', label: 'Strong Yes', icon: '👍👍', color: 'rec-green' },
-				{ value: 'Recommend', label: 'Yes', icon: '👍', color: 'rec-green' },
-				{ value: 'Neutral', label: 'Maybe', icon: '🤔', color: 'rec-orange' },
-				{ value: 'Do Not Recommend', label: 'No', icon: '👎', color: 'rec-red' }
+			recommendations: ['Strongly Recommend', 'Recommend', 'Neutral', 'Do Not Recommend'],
+			skills: [
+				{ key: 'problem', label: 'Problem solving' },
+				{ key: 'communication', label: 'Communication' },
+				{ key: 'domain', label: 'Domain knowledge' }
 			]
 		};
 	},
-
 	computed: {
-		filteredInterviews() {
-			return this.interviews.filter(iv => {
-				const q = this.searchQuery.toLowerCase();
-				const matchSearch = !q ||
-					(iv.applicant_name || iv.applicant || '').toLowerCase().includes(q) ||
-					(iv.interviewer || '').toLowerCase().includes(q) ||
-					(iv.round_name || '').toLowerCase().includes(q);
-				const matchStatus = !this.statusFilter || iv.status === this.statusFilter;
-				return matchSearch && matchStatus;
-			});
-		},
-
-		pendingFeedback() {
-			return this.interviews.filter(iv =>
-				(iv.status === 'Scheduled' || iv.status === 'In Progress') &&
-				!iv.rating &&
-				iv.interviewer === frappe.session.user
-			);
-		},
-
-		ratingLabel() {
-			const labels = { 1: 'Poor', 2: 'Below Average', 3: 'Average', 4: 'Good', 5: 'Excellent' };
-			const r = this.hoverRating || this.feedbackForm.rating;
-			return labels[r] || '';
-		},
-
-		weekStart() {
-			const d = new Date();
-			d.setDate(d.getDate() - d.getDay() + 1 + this.weekOffset * 7);
-			d.setHours(0, 0, 0, 0);
-			return d;
-		},
-
-		weekDays() {
-			const days = [];
-			const today = new Date().toISOString().split('T')[0];
+		// Interview date and time are already India wall-clock; never converted.
+		days() {
+			const base = new Date();
+			base.setHours(0, 0, 0, 0);
+			base.setDate(base.getDate() - ((base.getDay() + 6) % 7) + this.week * 7);   // Monday
+			const todayIso = this.iso(new Date());
+			const out = [];
 			for (let i = 0; i < 7; i++) {
-				const d = new Date(this.weekStart);
+				const d = new Date(base);
 				d.setDate(d.getDate() + i);
-				const dateStr = d.toISOString().split('T')[0];
-				days.push({
-					date: dateStr,
-					dayName: d.toLocaleDateString('en-US', { weekday: 'short' }),
-					dateLabel: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-					isToday: dateStr === today
+				out.push({
+					iso: this.iso(d),
+					dow: d.toLocaleDateString('en-GB', { weekday: 'short' }),
+					label: d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }),
+					isToday: this.iso(d) === todayIso,
+					isWeekend: i > 4
 				});
 			}
-			return days;
+			return out;
 		},
-
-		weekLabel() { return this.weekDays[0].dateLabel + ' — ' + this.weekDays[6].dateLabel; }
+		weekLabel() {
+			if (!this.days.length) return '';
+			return this.days[0].label + ' to ' + this.days[6].label;
+		},
+		pendingFeedback() { return this.interviews.filter(iv => iv.status === 'Completed' && !iv.rating); },
+		listRows() {
+			let list = this.interviews.slice().sort((a, b) => String(b.scheduled_date + b.scheduled_time).localeCompare(String(a.scheduled_date + a.scheduled_time)));
+			if (this.onlyPending) list = list.filter(iv => iv.status === 'Completed' && !iv.rating);
+			const q = this.q.trim().toLowerCase();
+			if (q) list = list.filter(iv => [iv.applicant_name, iv.job_title, iv.round_name].join(' ').toLowerCase().includes(q));
+			return list;
+		},
+		ratingLabel() {
+			return ['', 'Poor', 'Below average', 'Good', 'Very good', 'Excellent'][this.fb.rating] || '';
+		}
 	},
-
-	mounted() { this.loadInterviews(); },
-
+	mounted() { this.load(); },
 	methods: {
-		countByStatus(status) { return this.interviews.filter(iv => iv.status === status).length; },
-		interviewsOnDate(date) { return this.filteredInterviews.filter(iv => iv.scheduled_date === date); },
-		prevWeek() { this.weekOffset--; },
-		nextWeek() { this.weekOffset++; },
-		goToday() { this.weekOffset = 0; },
-
-		truncate(str, len) {
-			if (!str) return '';
-			return str.length > len ? str.slice(0, len) + '...' : str;
-		},
-
-		async api(method, params = {}) {
+		api(method, args = {}) {
 			return new Promise((resolve, reject) => {
-				frappe.call({
-					method: method,
-					args: params,
-					async: true,
-					callback: r => resolve(r.message),
-					error: reject
-				});
+				frappe.call({ method, args, callback: r => resolve(r.message), error: reject });
 			});
 		},
-
-		async loadInterviews() {
-			this.loading = true;
-			try {
-				const res = await this.api('wf_get_interview_calendar_data');
-				// The API already scopes correctly per role (HR/System = all,
-				// coordinator = interviews for their assigned positions). Do NOT
-				// re-filter by interviewer client-side — that hid interviews from
-				// coordinators who own the position but didn't personally conduct them.
-				this.interviews = Array.isArray(res) ? res : (res.interviews || []);
-
-				const userRoles = (window.frappe && frappe.user_roles) || [];
-				this.isHR = userRoles.includes('WF HR Manager') || userRoles.includes('System Manager');
-			} catch (e) {
-				try {
-					this.interviews = await this.api('frappe.client.get_list', {
-						doctype: 'WF Interview',
-						fields: ['name', 'applicant', 'job_opening', 'round_number', 'round_name', 'interviewer', 'scheduled_date', 'scheduled_time', 'duration_minutes', 'status', 'rating', 'recommendation', 'feedback', 'google_meet_link'],
-						limit_page_length: 0,
-						order_by: 'scheduled_date desc'
-					});
-				} catch (e2) {
-					this.showToast('Failed to load interviews', 'error');
-				}
-			}
+		notify(msg, type = 'success') { this.toast = { show: true, msg, type }; },
+		async load() {
+			try { this.interviews = (await this.api('wf_get_interview_calendar_data')) || []; }
+			catch (e) { this.notify('Could not load interviews.', 'error'); }
 			this.loading = false;
 		},
-
-		async openDetail(iv) {
-			this.selected = iv;
-			this.feedbackForm = {
-				rating: iv.rating || 0,
-				recommendation: iv.recommendation || '',
-				feedback: iv.feedback || '',
-				strengths: '',
-				improvements: '',
-				problemSolving: 0,
-				communication: 0,
-				domainKnowledge: 0
-			};
-			this.rescheduleForm = { date: '', time: '' };
-			this.showPanel = true;
-
-			// Load previous rounds for context
-			if (iv.applicant) {
-				try {
-					const allRounds = await this.api('frappe.client.get_list', {
-						doctype: 'WF Interview',
-						fields: ['name', 'round_number', 'round_name', 'rating', 'recommendation', 'feedback', 'status'],
-						filters: {
-							applicant: iv.applicant,
-							name: ['!=', iv.name],
-							status: 'Completed'
-						},
-						order_by: 'round_number asc'
-					});
-					this.previousRounds = allRounds || [];
-				} catch (e) {
-					this.previousRounds = [];
-				}
-			}
+		iso(d) {
+			return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 		},
-
-		closePanel() {
-			this.showPanel = false;
-			this.selected = null;
-			this.previousRounds = [];
+		onDay(iso) {
+			return this.interviews
+				.filter(iv => String(iv.scheduled_date || '').slice(0, 10) === iso)
+				.sort((a, b) => String(a.scheduled_time).localeCompare(String(b.scheduled_time)));
 		},
+		evClass(iv) { return iv.status === 'Cancelled' ? 'cx' : (iv.status === 'Completed' ? 'done' : ''); },
+		shortDate(d) { return shortDate(d); },
+		copy(text) {
+			if (navigator.clipboard) navigator.clipboard.writeText(text);
+			this.notify('Link copied.');
+		},
+		open(iv) { this.sel = iv; },
 
-		async submitFeedback() {
-			if (!this.feedbackForm.rating || !this.feedbackForm.recommendation) {
-				this.showToast('Rating and recommendation are required', 'error');
-				return;
-			}
-
-			let fullFeedback = '';
-			if (this.feedbackForm.strengths) {
-				fullFeedback += 'Strengths: ' + this.feedbackForm.strengths + '\n\n';
-			}
-			if (this.feedbackForm.improvements) {
-				fullFeedback += 'Areas for Improvement: ' + this.feedbackForm.improvements + '\n\n';
-			}
-			if (this.feedbackForm.problemSolving || this.feedbackForm.communication || this.feedbackForm.domainKnowledge) {
-				fullFeedback += 'Skill Ratings — ';
-				if (this.feedbackForm.problemSolving) fullFeedback += 'Problem Solving: ' + this.feedbackForm.problemSolving + '/5, ';
-				if (this.feedbackForm.communication) fullFeedback += 'Communication: ' + this.feedbackForm.communication + '/5, ';
-				if (this.feedbackForm.domainKnowledge) fullFeedback += 'Domain Knowledge: ' + this.feedbackForm.domainKnowledge + '/5';
-				fullFeedback += '\n\n';
-			}
-			if (this.feedbackForm.feedback) {
-				fullFeedback += this.feedbackForm.feedback;
-			}
-
-			this.saving = true;
+		openFeedback() {
+			this.fb = { show: true, rating: 0, recommendation: '', problem: 0, communication: 0, domain: 0, strengths: '', improve: '', notes: '', busy: false };
+		},
+		async doFeedback() {
+			if (!this.fb.rating) { this.notify('Please give a rating.', 'error'); return; }
+			if (!this.fb.recommendation) { this.notify('Please choose a recommendation.', 'error'); return; }
+			const parts = [];
+			this.skills.forEach(s => { if (this.fb[s.key]) parts.push(s.label + ': ' + this.fb[s.key] + '/5'); });
+			if (this.fb.strengths.trim()) parts.push('Strengths: ' + this.fb.strengths.trim());
+			if (this.fb.improve.trim()) parts.push('Areas to improve: ' + this.fb.improve.trim());
+			if (this.fb.notes.trim()) parts.push(this.fb.notes.trim());
+			this.fb.busy = true;
 			try {
 				await this.api('wf_submit_feedback', {
-					data: {
-						interview_name: this.selected.name,
-						rating: this.feedbackForm.rating,
-						recommendation: this.feedbackForm.recommendation,
-						feedback: fullFeedback.trim()
-					}
+					data: { interview_name: this.sel.name, rating: this.fb.rating, recommendation: this.fb.recommendation, feedback: parts.join('\n\n') }
 				});
-				this.selected.rating = this.feedbackForm.rating;
-				this.selected.recommendation = this.feedbackForm.recommendation;
-				this.selected.feedback = fullFeedback.trim();
-				this.selected.status = 'Completed';
-				this.showToast('Feedback submitted successfully!');
-				await this.loadInterviews();
-			} catch (e) {
-				this.showToast('Failed to submit feedback', 'error');
-			}
-			this.saving = false;
+				this.notify('Feedback submitted.');
+				this.fb.show = false;
+				this.sel = null;
+				await this.load();
+			} catch (e) { /* shown by frappe */ }
+			this.fb.busy = false;
 		},
 
-		async reschedule() {
-			if (!this.rescheduleForm.date) { this.showToast('New date is required', 'error'); return; }
-			this.saving = true;
+		openReschedule() {
+			this.res = { show: true, date: String(this.sel.scheduled_date || '').slice(0, 10), time: (this.sel.scheduled_time || '').slice(0, 5), busy: false };
+		},
+		async doReschedule() {
+			if (!this.res.date) { this.notify('Choose the new date.', 'error'); return; }
+			this.res.busy = true;
 			try {
 				await this.api('wf_reschedule_interview', {
-					data: {
-						interview: this.selected.name,
-						scheduled_date: this.rescheduleForm.date,
-						scheduled_time: this.rescheduleForm.time || this.selected.scheduled_time
-					}
+					data: { interview: this.sel.name, scheduled_date: this.res.date, scheduled_time: this.res.time || this.sel.scheduled_time }
 				});
-				this.selected.scheduled_date = this.rescheduleForm.date;
-				if (this.rescheduleForm.time) this.selected.scheduled_time = this.rescheduleForm.time;
-				this.showToast('Interview rescheduled!');
-			} catch (e) {
-				this.showToast('Failed to reschedule', 'error');
-			}
-			this.saving = false;
+				this.notify('Rescheduled. Both sides notified.');
+				this.res.show = false;
+				this.sel = null;
+				await this.load();
+			} catch (e) { /* shown by frappe */ }
+			this.res.busy = false;
 		},
 
-		async cancelInterview() {
-			if (!confirm('Cancel this interview?')) return;
-			this.saving = true;
+		async doCancel() {
+			this.cancel.busy = true;
 			try {
-				await this.api('wf_cancel_interview', {
-					data: {
-						interview: this.selected.name
-					}
-				});
-				this.selected.status = 'Cancelled';
-				this.showToast('Interview cancelled');
-				await this.loadInterviews();
-			} catch (e) {
-				this.showToast('Failed to cancel', 'error');
-			}
-			this.saving = false;
-		},
-
-		formatDate(d) {
-			if (!d) return '—';
-			return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-		},
-
-		showToast(msg, type = 'success') { this.toast = { show: true, msg, type }; }
+				await this.api('wf_cancel_interview', { data: { interview: this.sel.name, reason: this.cancel.reason.trim() } });
+				this.notify('Interview cancelled.');
+				this.cancel = { show: false, reason: '', busy: false };
+				this.sel = null;
+				await this.load();
+			} catch (e) { this.cancel.busy = false; }
+		}
 	}
 };
 </script>
 
 <style scoped>
-.tab-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-.tab-header h2 { margin: 0; font-size: 20px; font-weight: 600; }
-.view-toggle { display: flex; border: 1px solid #d1d5db; border-radius: 8px; overflow: hidden; }
-.view-toggle button { padding: 8px 16px; border: none; background: #fff; font-size: 13px; font-weight: 500; cursor: pointer; color: #6b7280; }
-.view-toggle button.active { background: #4f46e5; color: #fff; }
-
-/* Pending Feedback Banner */
-.pending-banner {
-	background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
-	border: 1px solid #f59e0b;
-	border-radius: 10px;
-	padding: 16px 20px;
-	margin-bottom: 20px;
-}
-.pending-header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
-.pending-icon { font-size: 20px; }
-.pending-header h3 { margin: 0; font-size: 16px; font-weight: 700; color: #92400e; }
-.pending-hint { font-size: 13px; color: #b45309; }
-.pending-cards { display: flex; flex-direction: column; gap: 8px; }
-.pending-card {
-	display: flex; justify-content: space-between; align-items: center;
-	background: #fff; border-radius: 8px; padding: 12px 16px; cursor: pointer;
-	border: 1px solid #fcd34d; transition: box-shadow 0.15s;
-}
-.pending-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
-.pending-name { font-weight: 600; font-size: 14px; color: #111827; }
-.pending-meta { font-size: 12px; color: #6b7280; margin-top: 2px; }
-.btn-feedback {
-	background: #f59e0b; color: #fff; border: none;
-	padding: 8px 16px; border-radius: 6px; font-weight: 600;
-	font-size: 13px; cursor: pointer;
-}
-.btn-feedback:hover { background: #d97706; }
-.btn-feedback-sm {
-	background: #4f46e5; color: #fff; border: none;
-	padding: 4px 10px; border-radius: 5px; font-size: 12px;
-	font-weight: 600; cursor: pointer;
-}
-.feedback-done { color: #16a34a; font-weight: 600; font-size: 13px; }
-
-.kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 16px; margin-bottom: 20px; }
-.filters-row { display: flex; gap: 12px; margin-bottom: 20px; }
-.search-input { flex: 1; padding: 10px 14px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; outline: none; min-width: 0; }
-.search-input:focus { border-color: #4f46e5; }
-.filter-select { padding: 10px 14px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; background: #fff; min-width: 130px; }
-
-/* Calendar */
-.calendar-section { background: #fff; border-radius: 10px; border: 1px solid #e5e7eb; overflow: hidden; }
-.cal-nav { display: flex; align-items: center; gap: 12px; padding: 16px 20px; border-bottom: 1px solid #e5e7eb; }
-.cal-nav h3 { margin: 0; font-size: 16px; font-weight: 600; flex: 1; text-align: center; }
-.cal-nav-btn { background: #fff; border: 1px solid #d1d5db; border-radius: 6px; padding: 6px 12px; cursor: pointer; font-size: 16px; }
-.cal-nav-btn:hover { background: #f9fafb; }
-.cal-today-btn { background: #4f46e5; color: #fff; border: none; border-radius: 6px; padding: 6px 14px; font-size: 13px; font-weight: 600; cursor: pointer; }
-.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); }
-.cal-day { border-right: 1px solid #f3f4f6; min-height: 140px; }
-.cal-day:last-child { border-right: none; }
-.cal-day.today { background: #faf5ff; }
-.cal-day-header { padding: 10px 8px; text-align: center; border-bottom: 1px solid #f3f4f6; background: #f9fafb; }
-.cal-day-name { font-size: 11px; font-weight: 600; color: #6b7280; text-transform: uppercase; display: block; }
-.cal-day-date { font-size: 14px; font-weight: 700; color: #111827; }
-.cal-day-events { padding: 6px; display: flex; flex-direction: column; gap: 4px; }
-.cal-event { padding: 6px 8px; border-radius: 6px; cursor: pointer; font-size: 12px; border-left: 3px solid; }
-.cal-event:hover { opacity: 0.85; }
-.event-scheduled { background: #eff6ff; border-color: #3b82f6; }
-.event-in-progress { background: #fff7ed; border-color: #f59e0b; }
-.event-completed { background: #f0fdf4; border-color: #22c55e; }
-.event-cancelled { background: #f9fafb; border-color: #9ca3af; }
-.event-rescheduled { background: #fdf4ff; border-color: #a855f7; }
-.event-time { font-weight: 700; color: #374151; }
-.event-name { font-weight: 600; color: #111827; margin-top: 2px; }
-.event-round { color: #6b7280; }
-.cal-empty { text-align: center; color: #d1d5db; padding: 10px; font-size: 13px; }
-
-/* Table */
-.table-wrapper { background: #fff; border-radius: 10px; border: 1px solid #e5e7eb; overflow-x: auto; }
-.wf-table { width: 100%; border-collapse: collapse; min-width: 900px; }
-.wf-table th { text-align: left; padding: 12px 16px; font-size: 12px; font-weight: 600; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; white-space: nowrap; }
-.wf-table td { padding: 14px 16px; font-size: 14px; border-bottom: 1px solid #f3f4f6; }
-.clickable-row { cursor: pointer; }
-.clickable-row:hover { background: #f9fafb; }
-.name-cell { font-weight: 600; color: #111827; }
-.center-text { text-align: center; color: #9ca3af; padding: 40px 16px !important; }
-.text-muted { color: #9ca3af; }
-.rating-stars { color: #f59e0b; font-size: 14px; letter-spacing: 1px; }
-.rating-stars-sm { color: #f59e0b; font-size: 12px; }
-
-/* Detail Panel */
-.detail-content { display: flex; flex-direction: column; gap: 16px; }
-.detail-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #f3f4f6; }
-.detail-label { font-size: 13px; font-weight: 600; color: #6b7280; }
-.detail-section { padding: 8px 0; }
-.detail-desc { margin-top: 6px; font-size: 14px; color: #374151; line-height: 1.6; }
-.meet-link { color: #4f46e5; font-weight: 600; text-decoration: none; }
-.meet-link:hover { text-decoration: underline; }
-
-/* Previous Rounds */
-.prev-round-card { padding: 10px 12px; border: 1px solid #e5e7eb; border-radius: 8px; margin-top: 8px; background: #f9fafb; }
-.prev-round-header { display: flex; justify-content: space-between; align-items: center; font-size: 13px; font-weight: 600; color: #374151; }
-.prev-round-rec { margin-top: 4px; }
-.prev-round-feedback { font-size: 13px; color: #6b7280; margin-top: 4px; line-height: 1.4; }
-
-/* Completed Section */
-.completed-section { background: #f0fdf4; border: 1px solid #86efac; border-radius: 8px; padding: 16px; }
-.completed-section h4 { margin: 0 0 12px; font-size: 15px; color: #166534; }
-
-/* Feedback Form */
-.feedback-form {
-	margin-top: 8px; padding: 20px;
-	border: 2px solid #4f46e5; border-radius: 10px; background: #fafaff;
-}
-.feedback-form h4 { margin: 0 0 16px; font-size: 16px; color: #4f46e5; }
-
-/* Star Picker */
-.star-picker { display: flex; align-items: center; gap: 4px; }
-.star { font-size: 32px; cursor: pointer; color: #d1d5db; transition: color 0.15s; }
-.star.filled { color: #f59e0b; }
-.star:hover { color: #f59e0b; transform: scale(1.1); }
-.rating-label { margin-left: 12px; font-size: 14px; font-weight: 600; color: #6b7280; }
-
-/* Recommendation Options */
-.rec-options { display: flex; gap: 8px; flex-wrap: wrap; }
-.rec-option {
-	display: flex; align-items: center; gap: 6px;
-	padding: 10px 14px; border: 2px solid #e5e7eb; border-radius: 8px;
-	cursor: pointer; font-size: 13px; font-weight: 500; transition: all 0.15s;
-}
-.rec-option input { display: none; }
-.rec-icon { font-size: 16px; }
-.rec-option.selected.rec-green { border-color: #22c55e; background: #f0fdf4; color: #166534; }
-.rec-option.selected.rec-orange { border-color: #f59e0b; background: #fffbeb; color: #92400e; }
-.rec-option.selected.rec-red { border-color: #ef4444; background: #fef2f2; color: #991b1b; }
-.rec-option:hover { border-color: #a5b4fc; }
-
-/* Skill Ratings */
-.skill-rating-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; }
-.skill-label { font-size: 13px; color: #374151; }
-.mini-stars { display: flex; gap: 2px; }
-.mini-star { font-size: 18px; cursor: pointer; color: #d1d5db; }
-.mini-star.filled { color: #f59e0b; }
-.mini-star:hover { color: #f59e0b; }
-
-/* Feedback Actions */
-.feedback-actions { margin-top: 16px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.feedback-hint { font-size: 12px; color: #9ca3af; }
-
-.form-group { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
-.form-group label { font-size: 13px; font-weight: 600; color: #374151; }
-.form-input { padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; outline: none; width: 100%; box-sizing: border-box; }
-.form-input:focus { border-color: #4f46e5; }
-.form-textarea { resize: vertical; font-family: inherit; }
-
-/* Reschedule */
-.reschedule-section { padding: 16px; border: 1px solid #e5e7eb; border-radius: 8px; background: #f9fafb; }
-.reschedule-section h4 { margin: 0 0 12px; font-size: 15px; color: #374151; }
-.form-row { display: flex; gap: 12px; margin-bottom: 12px; }
-.form-row .form-group { flex: 1; margin-bottom: 0; }
-
-/* Buttons */
-.btn-primary { background: #4f46e5; color: #fff; border: none; padding: 10px 20px; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 14px; }
-.btn-primary:hover { background: #4338ca; }
-.btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
-.btn-secondary { background: #fff; color: #374151; border: 1px solid #d1d5db; padding: 10px 20px; border-radius: 8px; font-weight: 500; cursor: pointer; font-size: 14px; }
-.btn-secondary:hover { background: #f9fafb; }
-.btn-secondary:disabled { opacity: 0.6; cursor: not-allowed; }
-.btn-danger { background: #ef4444; color: #fff; border: none; padding: 10px 20px; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 14px; }
-
-/* Responsive */
-@media (max-width: 1024px) {
-	.kpi-row { grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; }
-	.cal-event { font-size: 11px; padding: 4px 6px; }
-	.cal-day { min-height: 120px; }
-	.wf-table th, .wf-table td { padding: 10px 12px; }
-	.rec-options { flex-direction: column; }
-}
-@media (max-width: 768px) {
-	.filters-row { flex-direction: column; gap: 8px; }
-	.filter-select { width: 100%; min-width: auto; }
-	.cal-grid { grid-template-columns: repeat(4, 1fr); }
-	.cal-day { min-height: 100px; }
-	.form-row { flex-direction: column; gap: 8px; }
-	.pending-card { flex-direction: column; align-items: flex-start; gap: 8px; }
+.head { display: flex; align-items: flex-end; gap: 16px; flex-wrap: wrap; margin-bottom: 18px; }
+.head h1 { margin: 0; font-size: 26px; font-weight: 600; letter-spacing: -.02em; color: var(--wf-ink); }
+.head p { margin: 5px 0 0; color: var(--wf-mut); max-width: 72ch; }
+.head .seg { margin-left: auto; }
+.seg { display: inline-flex; border: 1px solid var(--wf-line); border-radius: 9px; padding: 3px; gap: 2px; background: #fff; }
+.seg.wrap { flex-wrap: wrap; }
+.seg button { border: 0; background: transparent; height: 32px; padding: 0 14px; border-radius: 7px; font: inherit; font-weight: 500; color: var(--wf-mut); cursor: pointer; }
+.seg button.on { background: var(--wf-primary-tint); color: var(--wf-primary-2); }
+.note { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; background: var(--wf-amber-tint); color: var(--wf-amber-ink); border-radius: 10px; padding: 10px 14px; font-size: 13.5px; margin-bottom: 16px; }
+.panel { background: #fff; border: 1px solid var(--wf-line); border-radius: 14px; overflow: hidden; }
+.weekbar { display: flex; align-items: center; gap: 8px; padding: 14px 20px; }
+.weekbar h2 { margin: 0 0 0 8px; font-size: 16px; font-weight: 600; }
+.week { display: grid; grid-template-columns: repeat(7, 1fr); border-top: 1px solid var(--wf-line); }
+.day { border-right: 1px solid var(--wf-line-2); min-height: 260px; padding: 10px; }
+.day.weekend { background: #FBFBFE; }
+.day:last-child { border-right: 0; }
+.day h5 { margin: 0 0 10px; font-size: 13px; font-weight: 600; display: flex; gap: 6px; align-items: baseline; }
+.day h5 span { color: var(--wf-mut-2); font-weight: 500; }
+.day.today h5 { color: var(--wf-primary-2); }
+.day.today h5 em { font-style: normal; font-size: 11.5px; background: var(--wf-primary); color: #fff; padding: 1px 7px; border-radius: 5px; }
+.ev { display: block; width: 100%; text-align: left; border: 0; border-left: 3px solid var(--wf-primary); border-radius: 9px; background: var(--wf-primary-tint); padding: 8px 10px; margin-bottom: 8px; font: inherit; font-size: 12.5px; cursor: pointer; }
+.ev b { display: block; font-size: 13px; }
+.ev.done { background: var(--wf-line-2); border-left-color: var(--wf-mut-2); color: var(--wf-mut); }
+.ev.cx { background: #fff; border-left-color: var(--wf-line); color: var(--wf-mut-2); text-decoration: line-through; }
+.none { font-size: 12.5px; color: var(--wf-mut-2); }
+.toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 16px 20px 6px; }
+.toolbar .in { width: auto; }
+.search { flex: 1; min-width: 220px; }
+.chip { height: 40px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--wf-line); background: #fff; color: var(--wf-mut); font: inherit; font-size: 13.5px; font-weight: 500; cursor: pointer; }
+.chip.on { background: var(--wf-primary); border-color: var(--wf-primary); color: #fff; }
+.chip .c { opacity: .7; margin-left: 3px; }
+.t { width: 100%; border-collapse: collapse; }
+.t th { text-align: left; font-size: 12.5px; font-weight: 500; color: var(--wf-mut-2); padding: 14px 16px 10px; border-bottom: 1px solid var(--wf-line); }
+.t td { padding: 13px 16px; border-bottom: 1px solid var(--wf-line-2); }
+.t tbody tr:last-child td { border-bottom: 0; }
+.t th:first-child, .t td:first-child { padding-left: 20px; }
+.t tbody tr { cursor: pointer; }
+.t tbody tr:hover td { background: #FAFAFD; }
+.ttl { font-weight: 600; color: var(--wf-ink); }
+.sub { font-size: 13px; color: var(--wf-mut); }
+.sub.top { margin: -6px 0 14px; }
+.num { font-variant-numeric: tabular-nums; }
+.empty { text-align: center; padding: 44px 20px; }
+.empty h3 { margin: 0 0 6px; font-size: 17px; font-weight: 600; }
+.empty p { margin: 0; color: var(--wf-mut); }
+.pills { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+.kv { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 20px; margin: 0 0 20px; }
+.kv dt { font-size: 12.5px; color: var(--wf-mut-2); }
+.kv dd { margin: 2px 0 0; font-weight: 500; }
+.sec { margin-bottom: 20px; }
+.sec h4 { margin: 0 0 8px; font-size: 13.5px; font-weight: 600; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; }
+.box { border: 1px solid var(--wf-line); border-radius: 12px; padding: 14px 16px; }
+.pre { white-space: pre-wrap; margin: 8px 0 0; font-size: 13.5px; }
+.stars { display: flex; align-items: center; gap: 4px; }
+.stars button { border: 0; background: transparent; font-size: 28px; line-height: 1; color: #D5D8E3; cursor: pointer; padding: 0 2px; }
+.stars button.on { color: var(--wf-amber); }
+.stars .sub { margin-left: 10px; }
+.grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0 16px; }
+.fld { margin-bottom: 16px; }
+.fld label { display: block; font-weight: 500; margin-bottom: 6px; }
+.req { color: var(--wf-bad); }
+.in { box-sizing: border-box; width: 100%; height: 40px; border: 1px solid var(--wf-line); border-radius: 9px; padding: 0 12px; background: #fff; font: inherit; color: var(--wf-ink); }
+.in:focus { outline: none; border-color: var(--wf-primary-2); box-shadow: 0 0 0 3px var(--wf-primary-tint); }
+.ta { height: auto; padding: 10px 12px; line-height: 1.5; resize: vertical; }
+.btn { height: 38px; padding: 0 15px; border-radius: 9px; border: 1px solid var(--wf-line); background: #fff; color: var(--wf-ink-2); font: inherit; font-weight: 500; font-size: 14px; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; }
+.btn:hover { background: var(--wf-line-2); }
+.btn.pri { background: var(--wf-primary); border-color: var(--wf-primary); color: #fff; }
+.btn.pri:hover { background: var(--wf-primary-2); }
+.btn.dan { color: var(--wf-bad); border-color: #F5C2C2; }
+.btn.dan:hover { background: var(--wf-bad-tint); }
+.btn.sm { height: 32px; padding: 0 11px; font-size: 13px; }
+@media (max-width: 900px) {
+	.week { grid-template-columns: 1fr; }
+	.day { border-right: 0; border-bottom: 1px solid var(--wf-line-2); min-height: 0; }
+	.hs { display: none; }
+	.kv, .grid { grid-template-columns: 1fr; }
 }
 </style>

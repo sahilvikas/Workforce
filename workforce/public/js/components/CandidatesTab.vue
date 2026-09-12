@@ -1,1345 +1,675 @@
 <template>
-    <div class="candidates-tab">
-        <!-- KPIs -->
-        <div class="stats-row">
-            <KpiCard label="Total" :value="stats.total" />
-            <KpiCard label="Shortlisted" :value="stats.shortlisted" />
-            <KpiCard label="In Interviews" :value="stats.in_interviews" />
-            <KpiCard label="Selected" :value="stats.selected" />
-            <KpiCard label="Offer Sent" :value="stats.offer_sent" />
-        </div>
+	<div class="cd">
+		<Toast :visible="toast.show" :message="toast.msg" :type="toast.type" @hide="toast.show = false" />
 
-        <!-- Toolbar with search + filters + view toggles -->
-        <div class="toolbar">
-            <div class="toolbar-left">
-                <input v-model="searchQuery" placeholder="Search by name, email..." class="search-input" />
-                <select v-model="filterJob" class="filter-select">
-                    <option value="">All Jobs</option>
-                    <option v-for="j in jobs" :key="j.name" :value="j.name">{{ j.job_title }}</option>
-                </select>
-                <select v-model="filterStatus" class="filter-select">
-                    <option value="">All Statuses</option>
-                    <option v-for="s in statuses" :key="s" :value="s">{{ s }}</option>
-                </select>
-            </div>
-            <div class="toolbar-right">
-                <div class="view-toggle">
-                    <button :class="['toggle-btn', view === 'pipeline' ? 'active' : '']" @click="view = 'pipeline'">
-                        Pipeline
-                    </button>
-                    <button :class="['toggle-btn', view === 'table' ? 'active' : '']" @click="view = 'table'">
-                        Table
-                    </button>
-                </div>
-            </div>
-        </div>
+		<div class="head">
+			<div>
+				<h1>Candidates</h1>
+				<p>Everyone in the pipeline. Columns with a diamond need a decision from you.</p>
+			</div>
+			<div class="seg">
+				<button type="button" :class="{ on: view === 'board' }" @click="view = 'board'">Board</button>
+				<button type="button" :class="{ on: view === 'list' }" @click="view = 'list'">List</button>
+			</div>
+		</div>
 
-        <!-- Kanban Pipeline View -->
-        <div v-if="view === 'pipeline'" class="kanban-board">
-            <div v-for="col in pipelineColumns" :key="col.status" class="kanban-column">
-                <div class="kanban-header">
-                    <span class="kanban-title">{{ col.status }}</span>
-                    <span class="kanban-count">{{ col.candidates.length }}</span>
-                </div>
-                <div class="kanban-cards">
-                    <div
-                        v-for="c in col.candidates"
-                        :key="c.name"
-                        class="kanban-card"
-                        @click="openDetail(c)"
-                    >
-                        <div class="card-name">{{ c.applicant_name }}</div>
-                        <div class="card-job">{{ c.job_title }}</div>
-                        <div class="card-footer">
-                            <span v-if="c.ai_score" class="ai-score">Score: {{ c.ai_score }}</span>
-                            <span class="card-date">{{ formatDate(c.applied_on) }}</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
+		<div class="filters">
+			<input v-model="q" class="in search" placeholder="Search by name or email" />
+			<select v-model="jobFilter" class="in sel">
+				<option value="">All positions</option>
+				<option v-for="j in jobs" :key="j.name" :value="j.name">{{ j.job_title }}</option>
+			</select>
+			<button type="button" class="chip" :class="{ on: showClosed }" @click="showClosed = !showClosed">
+				{{ showClosed ? 'Hide' : 'Show' }} closed <span class="c">{{ closed.length }}</span>
+			</button>
+		</div>
 
-        <!-- Table View -->
-        <div v-else class="table-wrap">
-            <table class="wf-table">
-                <thead>
-                    <tr>
-                        <th>Name</th>
-                        <th>Email</th>
-                        <th>Job Opening</th>
-                        <th>Source</th>
-                        <th>Score</th>
-                        <th>Status</th>
-                        <th>Applied</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr v-for="c in filteredCandidates" :key="c.name" @click="openDetail(c)">
-                        <td class="td-name">{{ c.applicant_name }}</td>
-                        <td>{{ c.email }}</td>
-                        <td>{{ c.job_title }}</td>
-                        <td>{{ c.source }}</td>
-                        <td>
-                            <span v-if="c.ai_score !== null" :class="'score-badge ' + scoreClass(c.ai_score)">
-                                {{ c.ai_score }}
-                            </span>
-                            <span v-else class="score-none">—</span>
-                        </td>
-                        <td><Badge :label="c.status" /></td>
-                        <td>{{ formatDate(c.applied_on) }}</td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>
+		<div v-if="loading" class="panel empty"><p>Loading…</p></div>
 
-        <!-- Detail Panel -->
-        <Dialog v-if="selected" :visible="true" :title="selected.applicant_name" size="lg" @close="selected = null" @submit="closeDetail">
-            <div class="detail-panel">
-                <div class="detail-section">
-                    <div class="detail-row">
-                        <span class="detail-label">Status</span>
-                        <Badge :label="selected.status" />
-                    </div>
-                    <div class="detail-row" v-if="selected.email">
-                        <span class="detail-label">Email</span>
-                        <span>{{ selected.email }}</span>
-                    </div>
-                    <div class="detail-row" v-if="selected.phone">
-                        <span class="detail-label">Phone</span>
-                        <span>{{ selected.phone }}</span>
-                    </div>
-                    <div class="detail-row" v-if="selected.job_title">
-                        <span class="detail-label">Job Opening</span>
-                        <span>{{ selected.job_title }}</span>
-                    </div>
-                    <div class="detail-row" v-if="selected.source">
-                        <span class="detail-label">Source</span>
-                        <span>{{ selected.source }}</span>
-                    </div>
-                    <div class="detail-row" v-if="selected.ai_score !== null">
-                        <span class="detail-label">AI Score</span>
-                        <span :class="'score-badge ' + scoreClass(selected.ai_score)">{{ selected.ai_score }}</span>
-                    </div>
-                    <div class="detail-row" v-if="selected.ai_grade">
-                        <span class="detail-label">AI Grade</span>
-                        <span>{{ selected.ai_grade }}</span>
-                    </div>
-                </div>
+		<div v-else-if="view === 'board'" class="board">
+			<div v-for="lane in lanes" :key="lane" class="lane">
+				<div class="lane-h">
+					<span v-if="DECISION_LANES[lane]" class="dm" title="You decide here"></span>
+					{{ lane }}<span class="c">{{ inLane(lane).length }}</span>
+				</div>
+				<button v-for="c in inLane(lane)" :key="c.name" class="card" :class="{ dec: isDecision(c) }" type="button" @click="open(c)">
+					<div class="nm">{{ c.applicant_name }}</div>
+					<div class="ps">{{ c.job_title }}</div>
+					<div class="nx" :class="{ dec: isDecision(c) }">{{ nextStep(c) }}</div>
+					<div class="rw">
+						<span class="score" :class="scoreClass(c)">{{ scoreText(c) }}</span>
+						<span class="sp"></span>
+						<span class="sub">{{ rel(c.creation) }}</span>
+					</div>
+				</button>
+				<div v-if="!inLane(lane).length" class="none">Nobody here</div>
+			</div>
+		</div>
 
-                <div class="detail-section" v-if="allowedNextStatuses.length > 0">
-                    <h4>Change Status</h4>
-                    <div class="status-actions">
-                        <select v-model="newStatus" class="form-input">
-                            <option value="">— Select next status —</option>
-                            <option v-for="s in allowedNextStatuses" :key="s" :value="s">{{ s }}</option>
-                        </select>
-                        <button class="btn-primary" @click="changeStatus" :disabled="!newStatus || newStatus === selected.status">
-                            Update Status
-                        </button>
-                        <button v-if="selected.status === 'Shortlisted'" class="btn-schedule" @click="openSchedule(selected)">
-                            <span class="btn-icon">📅</span> Schedule Interview
-                        </button>
-                        <button v-if="canCreateOffer" class="btn-offer" @click="openOffer(selected)">
-                            <span class="btn-icon">📝</span> Create Offer
-                        </button>
-                    </div>
-                </div>
-                <div class="detail-section" v-else>
-                    <h4>Status</h4>
-                    <p style="color:#6b7280;font-size:13px;margin:8px 0 0;">Status transitions from here happen automatically based on the flow.</p>
-                    <div class="status-actions" style="margin-top:12px;">
-                        <button v-if="selected.status === 'Shortlisted'" class="btn-schedule" @click="openSchedule(selected)">
-                            <span class="btn-icon">📅</span> Schedule Interview
-                        </button>
-                        <button v-if="canCreateOffer" class="btn-offer" @click="openOffer(selected)">
-                            <span class="btn-icon">📝</span> Create Offer
-                        </button>
-                    </div>
-                </div>
+		<section v-else class="panel">
+			<table class="t">
+				<thead><tr><th>Candidate</th><th class="hs">Position</th><th>Stage</th><th class="hs">Next step</th><th>Score</th><th class="hs">Applied</th></tr></thead>
+				<tbody>
+					<tr v-for="c in listRows" :key="c.name" @click="open(c)">
+						<td><div class="ttl">{{ c.applicant_name }}</div><div class="sub">{{ c.email }}</div></td>
+						<td class="hs">{{ c.job_title }}</td>
+						<td><Badge :label="c.status" /></td>
+						<td class="hs"><span :class="{ decw: isDecision(c) }">{{ nextStep(c) }}</span></td>
+						<td><span class="score" :class="scoreClass(c)">{{ scoreText(c) }}</span></td>
+						<td class="hs sub">{{ rel(c.creation) }}</td>
+					</tr>
+				</tbody>
+			</table>
+			<div v-if="!listRows.length" class="empty"><h3>No candidates</h3><p>Try another filter or clear the search.</p></div>
+		</section>
 
-                <!-- ==================== BACKGROUND VERIFICATION ==================== -->
-                <div class="detail-section" v-if="showBgvSection">
-                    <h4>Background Verification</h4>
+		<!-- candidate drawer -->
+		<DetailPanel :visible="showPanel" :title="sel ? sel.applicant_name : ''" @close="closePanel">
+			<template v-if="detail">
+				<div class="pills">
+					<Badge :label="cand.status" />
+					<span class="sub num">{{ cand.name }}</span>
+				</div>
+				<div class="dtabs">
+					<button v-for="t in tabs" :key="t.key" type="button" :class="{ on: tab === t.key }" @click="tab = t.key">{{ t.label }}</button>
+				</div>
 
-                    <div v-if="bgvLoading" class="bgv-loading">Loading check…</div>
+				<!-- summary -->
+				<template v-if="tab === 'summary'">
+					<div class="note" :class="{ info: !isDecision(cand) }">
+						<b>{{ isDecision(cand) ? 'Your decision:' : 'Next:' }}</b> {{ nextStep(cand) }}
+					</div>
+					<div v-if="cand.ai_score" class="ai">
+						<span class="ring" :class="scoreClass(cand)">{{ cand.ai_score }}<em>{{ cand.ai_grade ? 'Grade ' + cand.ai_grade : 'Score' }}</em></span>
+						<div>
+							<b>AI screening</b>
+							<p>{{ cand.ai_summary || 'No summary.' }}</p>
+							<p class="sub">{{ cand.screening_notes }}</p>
+							<p class="sub">Advisory only. You make the call.</p>
+						</div>
+					</div>
+					<div v-else-if="cand.screening_status === 'Screening Failed'" class="note">
+						<b>Needs manual review.</b> The AI could not read this resume. Open it and decide.
+					</div>
+					<dl class="kv">
+						<div><dt>Position</dt><dd>{{ detail.position.title }}</dd></div>
+						<div><dt>Team</dt><dd>{{ detail.position.team || '—' }}</dd></div>
+						<div><dt>Email</dt><dd>{{ cand.email }}</dd></div>
+						<div><dt>Phone</dt><dd>{{ cand.phone || '—' }}</dd></div>
+						<div><dt>Source</dt><dd>{{ cand.source || '—' }}</dd></div>
+						<div><dt>Applied</dt><dd>{{ shortDate(cand.creation) }}</dd></div>
+					</dl>
+					<div class="sec" v-if="cand.resume_url">
+						<h4>Resume</h4>
+						<a class="btn sm" :href="cand.resume_url" target="_blank" rel="noopener">Open resume</a>
+					</div>
+					<div class="sec" v-if="cand.skills"><h4>Skills</h4><p>{{ cand.skills }}</p></div>
+					<div class="sec" v-if="cand.cover_letter"><h4>Cover letter</h4><p class="pre">{{ cand.cover_letter }}</p></div>
+					<div class="sec">
+						<h4>Journey</h4>
+						<ol class="tl">
+							<li v-for="(l, i) in lanes" :key="l" :class="journeyClass(i)">
+								<span class="dot"></span>
+								<b>{{ l }}<em v-if="DECISION_LANES[l]" class="gt">Decision</em></b>
+							</li>
+							<li v-if="laneOf(cand) === 'Closed'" class="stop"><span class="dot"></span><b>{{ nextStep(cand) }}</b></li>
+						</ol>
+					</div>
+				</template>
 
-                    <!-- no check yet -->
-                    <template v-else-if="!bgv">
-                        <p class="bgv-help">
-                            Verification runs before the offer letter. The candidate is emailed a form to list their
-                            last two employers, each employer is contacted separately, and no offer can be issued
-                            until you clear the result.
-                        </p>
-                        <button v-if="canDecideBgv" class="btn-bgv" @click="startBgv" :disabled="bgvBusy">
-                            {{ bgvBusy ? 'Starting…' : 'Start Background Check' }}
-                        </button>
-                        <p v-else class="bgv-help">Only HR can start a background check.</p>
-                    </template>
+				<!-- interviews -->
+				<template v-if="tab === 'interviews'">
+					<div v-if="!interviews.length" class="empty">
+						<h3>No interviews yet</h3>
+						<p>{{ cand.status === 'Shortlisted' ? 'Schedule the rounds from the position’s template.' : 'Interviews are scheduled once a candidate is shortlisted.' }}</p>
+					</div>
+					<div v-for="iv in interviews" :key="iv.name" class="box">
+						<div class="box-top">
+							<b>Round {{ iv.round_number }}: {{ iv.round_name }}</b>
+							<Badge :label="iv.status" />
+						</div>
+						<div class="sub">{{ shortDate(iv.scheduled_date) }} at {{ (iv.scheduled_time || '').slice(0, 5) }}, {{ iv.duration_minutes }} min, with {{ iv.interviewer_name }}</div>
+						<div v-if="iv.rating" class="sub"><b>{{ iv.rating }} / 5</b>, {{ iv.recommendation }}</div>
+						<p v-if="iv.feedback" class="pre fb">{{ iv.feedback }}</p>
+						<a v-if="iv.google_meet_link && iv.status === 'Scheduled'" class="btn sm" :href="iv.google_meet_link" target="_blank" rel="noopener">Join Google Meet</a>
+					</div>
+				</template>
 
-                    <!-- a check exists -->
-                    <template v-else>
-                        <div class="bgv-head">
-                            <Badge :label="bgv.status" />
-                            <span class="bgv-meta">
-                                {{ bgv.companies_replied }} of {{ bgv.companies_total }} verifier{{ bgv.companies_total === 1 ? '' : 's' }} replied
-                                <template v-if="bgv.candidate_submitted_on"> · submitted {{ formatDate(bgv.candidate_submitted_on) }}</template>
-                            </span>
-                        </div>
+				<!-- background check -->
+				<template v-if="tab === 'bgv'">
+					<div v-if="!bgv" class="empty">
+						<h3>{{ cand.status === 'Selected' ? 'Ready to start' : 'Not started' }}</h3>
+						<p>The background check starts after a candidate is selected. The candidate lists their last two employers; each employer confirms by email. No offer can go out until you clear it.</p>
+					</div>
+					<template v-else>
+						<div class="pills"><Badge :label="bgv.status" /><span class="sub num">{{ bgv.name }}</span></div>
+						<div class="sub" v-if="bgv.candidate_submitted_on">Candidate submitted {{ shortDate(bgv.candidate_submitted_on) }}. {{ bgv.companies_replied }} of {{ bgv.companies_total }} employers replied.</div>
+						<div v-if="bgv.status === 'Awaiting Candidate'" class="sec">
+							<h4>Form link</h4>
+							<div class="copyrow"><input class="in" :value="bgvFormUrl" readonly /><button class="btn sm" type="button" @click="copy(bgvFormUrl)">Copy</button></div>
+						</div>
+						<div v-for="co in (bgv.companies || [])" :key="co.row" class="box">
+							<div class="box-top"><b>{{ co.company_name }}</b><Badge :label="co.overall_verdict" /></div>
+							<div class="sub">{{ co.designation }}<template v-if="co.period">, {{ co.period }}</template></div>
+							<div class="sub">Verifier: {{ co.verifier_name }}</div>
+							<p v-if="co.mismatch_notes" class="sub warn">{{ co.mismatch_notes }}</p>
+						</div>
+						<div v-if="bgv.hr_decision_on" class="sub">Decided by {{ bgv.hr_decision_by }} on {{ shortDate(bgv.hr_decision_on) }}. {{ bgv.hr_notes }}</div>
+					</template>
+				</template>
 
-                        <div v-if="bgv.status === 'Awaiting Candidate'" class="bgv-note">
-                            Waiting for the candidate to fill in their employment history. The link expires
-                            {{ formatDate(bgv.token_expires_on) }}.
-                            <div v-if="bgv.access_token" class="bgv-link-row">
-                                <input :value="bgvFormUrl" readonly class="form-input" style="flex:1;font-size:12px;background:#fff;" @focus="$event.target.select()" />
-                                <button class="btn-secondary" @click="copyUrl(bgvFormUrl)" style="padding:8px 16px;">Copy link</button>
-                            </div>
-                        </div>
+				<!-- offer and joining -->
+				<template v-if="tab === 'offer'">
+					<div v-if="offer" class="box">
+						<div class="box-top"><b>Offer</b><Badge :label="offer.status" /></div>
+						<dl class="kv small">
+							<div><dt>Designation</dt><dd>{{ offer.designation || '—' }}</dd></div>
+							<div><dt>Annual CTC</dt><dd class="num">{{ money(offer.offered_salary) }}</dd></div>
+							<div><dt>Joining</dt><dd>{{ offer.joining_date ? shortDate(offer.joining_date) : '—' }}</dd></div>
+							<div><dt>Responds by</dt><dd>{{ offer.expires_on ? shortDate(offer.expires_on) : '—' }}</dd></div>
+						</dl>
+						<div v-if="offer.response_url" class="copyrow"><input class="in" :value="offer.response_url" readonly /><button class="btn sm" type="button" @click="copy(offer.response_url)">Copy link</button></div>
+					</div>
+					<div v-else class="empty">
+						<h3>No offer yet</h3>
+						<p>An offer can be created once the background check is cleared or waived.</p>
+					</div>
 
-                        <div v-if="bgv.hr_decision_on" class="bgv-decided">
-                            Marked <strong>{{ bgv.status }}</strong> by {{ bgv.hr_decision_by }} on {{ formatDate(bgv.hr_decision_on) }}.
-                            <template v-if="bgv.hr_notes"><br>{{ bgv.hr_notes }}</template>
-                        </div>
+					<div class="sec">
+						<h4>Joining</h4>
+						<div v-if="cand.status === 'Onboarded'" class="box"><b>Joined.</b> <span class="sub">Employee record created and credentials emailed.</span></div>
+						<template v-else-if="onboarding">
+							<div class="box">
+								<div class="sub">The candidate has been emailed a form for PAN, Aadhaar, bank and emergency contact.</div>
+								<div class="copyrow"><input class="in" :value="onboarding.form_url" readonly /><button class="btn sm" type="button" @click="copy(onboarding.form_url)">Copy</button></div>
+								<div class="sub">Form status: {{ onboarding.status }}</div>
+							</div>
+							<div v-if="onboarding.status !== 'Submitted'" class="note lock">
+								<b>Complete onboarding</b> unlocks when the form comes back.
+							</div>
+						</template>
+						<p v-else class="sub">After the offer is accepted.</p>
+					</div>
+				</template>
+			</template>
+			<div v-else class="empty"><p>Loading…</p></div>
 
-                        <!-- per company -->
-                        <div v-for="c in bgv.companies" :key="c.row" class="bgv-co">
-                            <div class="bgv-co-head">
-                                <strong>{{ c.company_name }}</strong>
-                                <Badge :label="c.responded_on ? c.overall_verdict : 'No response yet'" />
-                            </div>
-                            <table class="bgv-table">
-                                <thead>
-                                    <tr><th>Field</th><th>Candidate said</th><th>Employer</th></tr>
-                                </thead>
-                                <tbody>
-                                    <tr>
-                                        <td class="bgv-f">Designation</td>
-                                        <td>{{ c.designation || '—' }}</td>
-                                        <td><span :class="verdictClass(c.designation_verdict, c.responded_on)">{{ verdictText(c.designation_verdict, c.responded_on) }}</span></td>
-                                    </tr>
-                                    <tr>
-                                        <td class="bgv-f">Period</td>
-                                        <td>{{ c.period || '—' }}</td>
-                                        <td><span :class="verdictClass(c.period_verdict, c.responded_on)">{{ verdictText(c.period_verdict, c.responded_on) }}</span></td>
-                                    </tr>
-                                    <tr v-if="c.employee_id">
-                                        <td class="bgv-f">Employee ID</td>
-                                        <td>{{ c.employee_id }}</td>
-                                        <td><span class="v-none">—</span></td>
-                                    </tr>
-                                    <tr v-if="c.remuneration">
-                                        <td class="bgv-f">Last drawn salary</td>
-                                        <td>{{ c.remuneration }}</td>
-                                        <td><span :class="verdictClass(c.remuneration_verdict, c.responded_on)">{{ verdictText(c.remuneration_verdict, c.responded_on) }}</span></td>
-                                    </tr>
-                                    <tr v-if="c.reported_to">
-                                        <td class="bgv-f">Reported to</td>
-                                        <td>{{ c.reported_to }}</td>
-                                        <td><span :class="verdictClass(c.reported_to_verdict, c.responded_on)">{{ verdictText(c.reported_to_verdict, c.responded_on) }}</span></td>
-                                    </tr>
-                                    <tr v-if="c.reason_for_leaving">
-                                        <td class="bgv-f">Reason for leaving</td>
-                                        <td>{{ c.reason_for_leaving }}</td>
-                                        <td><span :class="verdictClass(c.reason_verdict, c.responded_on)">{{ verdictText(c.reason_verdict, c.responded_on) }}</span></td>
-                                    </tr>
-                                </tbody>
-                            </table>
+			<template #actions v-if="detail && detail.can_edit">
+				<button v-for="a in actions" :key="a.label" class="btn" :class="a.cls" type="button" @click="a.run()">{{ a.label }}</button>
+			</template>
+		</DetailPanel>
 
-                            <div class="bgv-verifier">
-                                Verifier: {{ c.verifier_name }}<template v-if="c.verifier_designation"> ({{ c.verifier_designation }})</template> · {{ c.verifier_email }}
-                                <template v-if="c.responded_on"> · replied {{ formatDate(c.responded_on) }}</template>
-                            </div>
+		<!-- status change confirm -->
+		<Dialog :visible="conf.show" :title="conf.title" :submit-label="conf.button" :loading="conf.busy" @close="conf.show = false" @submit="doStatus">
+			<p class="sub top">{{ conf.note }}</p>
+		</Dialog>
 
-                            <div v-if="c.mismatch_notes" class="bgv-mismatch">
-                                <strong>What did not match:</strong> {{ c.mismatch_notes }}
-                            </div>
-                            <div v-if="c.additional_comments" class="bgv-note" style="margin-top:8px;">
-                                <strong>Also said:</strong> {{ c.additional_comments }}
-                            </div>
+		<!-- schedule interviews -->
+		<Dialog :visible="sch.show" title="Schedule interviews" :submit-label="'Schedule ' + sch.rounds.length + ' round' + (sch.rounds.length === 1 ? '' : 's')" :loading="sch.busy" size="lg" @close="sch.show = false" @submit="doSchedule">
+			<p class="sub top">Each round gets a Google Meet link. The candidate and interviewer get an invite from hr@; the interviewer also gets a feedback link.</p>
+			<div v-for="(r, i) in sch.rounds" :key="i" class="box">
+				<b>Round {{ i + 1 }}</b>
+				<div class="grid">
+					<div class="fld"><label>Round name</label><input v-model="r.round_name" class="in" /></div>
+					<div class="fld"><label>Interviewer <span class="req">*</span></label>
+						<select v-model="r.interviewer" class="in">
+							<option value="">Choose</option>
+							<option v-for="u in interviewers" :key="u.name" :value="u.name">{{ u.full_name || u.name }}</option>
+						</select>
+					</div>
+					<div class="fld"><label>Date <span class="req">*</span></label><input v-model="r.scheduled_date" type="date" class="in" /></div>
+					<div class="fld"><label>Time</label><input v-model="r.scheduled_time" type="time" class="in" /></div>
+					<div class="fld"><label>Duration</label>
+						<select v-model.number="r.duration_minutes" class="in"><option :value="30">30 min</option><option :value="45">45 min</option><option :value="60">60 min</option></select>
+					</div>
+				</div>
+			</div>
+			<button class="btn sm dash" type="button" @click="addRound">Add another round</button>
+		</Dialog>
 
-                            <button v-if="!c.responded_on && canDecideBgv" class="btn-bgv-small"
-                                @click="overrideCompany(c)" :disabled="bgvBusy">
-                                Record a response manually
-                            </button>
-                        </div>
+		<!-- create offer -->
+		<Dialog :visible="off.show" title="Create and send offer" submit-label="Create and send offer" :loading="off.busy" @close="off.show = false" @submit="doOffer">
+			<p class="sub top">The offer goes to the candidate from hr@ with a link to accept or decline. They have 7 days.</p>
+			<div class="fld"><label>Designation <span class="req">*</span></label><input v-model="off.designation" class="in" placeholder="e.g. QA Engineer" /></div>
+			<div class="grid">
+				<div class="fld"><label>Annual CTC (₹) <span class="req">*</span></label><input v-model.number="off.annual_ctc" type="number" class="in num" placeholder="600000" /></div>
+				<div class="fld"><label>Start date</label><input v-model="off.start_date" type="date" class="in" /></div>
+			</div>
+			<div class="fld"><label>Terms and notes</label><textarea v-model="off.terms" class="in ta" rows="4" placeholder="Probation, notice period, anything the candidate should know"></textarea></div>
+		</Dialog>
 
-                        <!-- HR decision -->
-                        <div v-if="canDecideBgv && !bgvDecided" class="bgv-decide">
-                            <p class="bgv-help">
-                                Nothing here is automatic — all-green verdicts still need your judgement.
-                                Clearing this unlocks the offer letter. Waive it for freshers or an employer
-                                that no longer exists.
-                            </p>
-                            <div class="form-group">
-                                <label>Notes (required to fail or waive)</label>
-                                <textarea v-model="bgvNotes" rows="2" class="form-input" style="width:100%;"
-                                    placeholder="What you concluded and why"></textarea>
-                            </div>
-                            <div class="status-actions" style="margin-top:10px;">
-                                <button class="btn-bgv-clear" @click="decideBgv('Cleared')" :disabled="bgvBusy">Clear — allow the offer</button>
-                                <button class="btn-bgv-fail" @click="decideBgv('Failed')" :disabled="bgvBusy">Fail — no offer</button>
-                                <button class="btn-bgv-na" @click="decideBgv('Not Applicable')" :disabled="bgvBusy">Waive</button>
-                            </div>
-                        </div>
-                    </template>
-                </div>
+		<!-- background check decision -->
+		<Dialog :visible="bgd.show" :title="bgd.title" :submit-label="bgd.button" :loading="bgd.busy" @close="bgd.show = false" @submit="doBgvDecide">
+			<p class="sub top">{{ bgd.note }}</p>
+			<div class="fld" v-if="bgd.action !== 'Cleared'">
+				<label>Reason <span class="req">*</span></label>
+				<textarea v-model="bgd.notes" class="in ta" rows="3"></textarea>
+			</div>
+		</Dialog>
 
-                <div class="detail-section" v-if="selected.status === 'Onboarding Initiated'">
-                    <h4>Complete Onboarding</h4>
-                    <p style="color:#6b7280;font-size:13px;margin:0 0 12px;">Issue company email + temporary password. This creates the Employee record and sends welcome credentials to the candidate.</p>
-                    <div class="form-grid">
-                        <div class="form-group">
-                            <label>Company *</label>
-                            <select v-model="onboardForm.company" class="form-input">
-                                <option value="">— Select company —</option>
-                                <option v-for="c in companies" :key="c.name" :value="c.name">{{ c.name }}</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label>Department</label>
-                            <select v-model="onboardForm.department" class="form-input">
-                                <option value="">— Select department —</option>
-                                <option v-for="d in departments" :key="d.name" :value="d.name">{{ d.name }}</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label>Company Email *</label>
-                            <input v-model="onboardForm.company_email" type="email" class="form-input" placeholder="firstname@cozycornerpatios.com" />
-                        </div>
-                        <div class="form-group">
-                            <label>Temporary Password *</label>
-                            <input v-model="onboardForm.temp_password" type="text" class="form-input" placeholder="Set a temp password" />
-                        </div>
-                    </div>
-                    <button class="btn-primary" @click="completeOnboarding" :disabled="onboardLoading" style="margin-top:12px;">
-                        {{ onboardLoading ? 'Processing...' : 'Complete Onboarding' }}
-                    </button>
-                </div>
-
-                <div class="detail-section" v-if="selected.status === 'Onboarded'">
-                    <h4>Onboarded ✅</h4>
-                    <p style="color:#065f46;font-size:14px;margin:8px 0 0;background:#f0fdf4;padding:12px;border-radius:6px;">This candidate has been onboarded. Welcome email with credentials sent.</p>
-                </div>
-
-                <div class="detail-section" v-if="candidateDetailUrl && (selected.status === 'Offer Accepted' || selected.status === 'Onboarding Initiated')">
-                    <h4>Onboarding Form Link</h4>
-                    <p style="color:#6b7280;font-size:13px;margin:0 0 8px;">Share this link with the candidate if they didn't receive the email:</p>
-                    <div style="display:flex;gap:8px;align-items:center;">
-                        <input :value="candidateDetailUrl" readonly class="form-input" style="flex:1;font-size:12px;background:#f9fafb;" @focus="$event.target.select()" />
-                        <button class="btn-secondary" @click="copyUrl(candidateDetailUrl)" style="padding:8px 16px;">Copy</button>
-                    </div>
-                </div>
-
-                <div class="detail-section" v-if="interviewHistory.length > 0">
-                    <h4>Interview History</h4>
-                    <div class="interview-list">
-                        <div v-for="iv in interviewHistory" :key="iv.name" class="interview-item">
-                            <div class="iv-header">
-                                <span class="iv-round">Round {{ iv.round_number }}: {{ iv.round_name }}</span>
-                                <Badge :label="iv.status" />
-                            </div>
-                            <div class="iv-details">
-                                <span>{{ formatDate(iv.scheduled_date) }}</span>
-                                <span v-if="iv.interviewer"> · {{ iv.interviewer }}</span>
-                                <span v-if="iv.rating"> · Rating: {{ iv.rating }}/5</span>
-                            </div>
-                            <a v-if="iv.google_meet_link" :href="iv.google_meet_link" target="_blank" class="iv-link">
-                                Join Google Meet
-                            </a>
-                            <Badge v-if="iv.recommendation" :label="iv.recommendation" />
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </Dialog>
-
-        <!-- Schedule Interview Dialog -->
-        <Dialog v-if="showSchedule" :visible="true" title="Schedule Interviews" size="lg"
-            :loading="scheduleLoading" @close="showSchedule = false" @submit="scheduleInterviews">
-            <div v-for="(round, idx) in scheduleForm.rounds" :key="idx" class="round-block">
-                <h4>Round {{ idx + 1 }}: {{ round.round_name }}</h4>
-                <div class="form-grid">
-                    <div class="form-group">
-                        <label>Round Name</label>
-                        <input v-model="round.round_name" class="form-input" />
-                    </div>
-                    <div class="form-group">
-                        <label>Interviewer</label>
-                        <select v-model="round.interviewer" class="form-input">
-                            <option value="">— Select Interviewer —</option>
-                            <option v-for="u in interviewers" :key="u.name" :value="u.name">{{ u.full_name || u.name }} ({{ u.name }})</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label>Date *</label>
-                        <input v-model="round.scheduled_date" type="date" class="form-input" required />
-                    </div>
-                    <div class="form-group">
-                        <label>Time</label>
-                        <input v-model="round.scheduled_time" type="time" class="form-input" />
-                    </div>
-                    <div class="form-group">
-                        <label>Duration (min)</label>
-                        <input v-model.number="round.duration_minutes" type="number" class="form-input" />
-                    </div>
-                </div>
-            </div>
-        </Dialog>
-
-        <!-- Create Offer Dialog -->
-        <Dialog v-if="showOffer" :visible="true" title="Create Offer Letter" size="md"
-            :loading="offerLoading" @close="showOffer = false" @submit="submitOffer" submitLabel="Send Offer">
-            <div class="form-group">
-                <label>Designation</label>
-                <input v-model="offerForm.designation" class="form-input" placeholder="e.g. Software Engineer" />
-            </div>
-            <div class="form-row">
-                <div class="form-group">
-                    <label>Annual CTC</label>
-                    <input v-model.number="offerForm.annual_ctc" type="number" class="form-input" />
-                </div>
-                <div class="form-group">
-                    <label>Start Date</label>
-                    <input v-model="offerForm.start_date" type="date" class="form-input" />
-                </div>
-            </div>
-            <div class="form-group">
-                <label>Terms & Notes</label>
-                <textarea v-model="offerForm.terms" rows="4" class="form-input"></textarea>
-            </div>
-        </Dialog>
-
-        <Toast :message="toast.message" :type="toast.type" :visible="toast.visible" @hide="toast.visible = false" />
-    </div>
+		<!-- complete onboarding -->
+		<Dialog :visible="onb.show" title="Complete onboarding" submit-label="Create employee and send credentials" :loading="onb.busy" @close="onb.show = false" @submit="doOnboard">
+			<p class="sub top">This creates the Employee record and emails the company address and temporary password to the candidate.</p>
+			<div class="grid">
+				<div class="fld"><label>Company <span class="req">*</span></label>
+					<select v-model="onb.company" class="in"><option value="">Choose</option><option v-for="c in companies" :key="c" :value="c">{{ c }}</option></select>
+				</div>
+				<div class="fld"><label>Department</label>
+					<select v-model="onb.department" class="in"><option value="">Choose</option><option v-for="d in departments" :key="d.name || d" :value="d.name || d">{{ d.name || d }}</option></select>
+				</div>
+				<div class="fld"><label>Company email <span class="req">*</span></label><input v-model="onb.company_email" class="in" placeholder="name@cozycornerpatios.com" /></div>
+				<div class="fld"><label>Temporary password <span class="req">*</span></label><input v-model="onb.temp_password" class="in" /></div>
+			</div>
+		</Dialog>
+	</div>
 </template>
 
 <script>
 import Badge from './shared/Badge.vue';
 import Dialog from './shared/Dialog.vue';
-import KpiCard from './shared/KpiCard.vue';
+import DetailPanel from './shared/DetailPanel.vue';
 import Toast from './shared/Toast.vue';
+import { shortDate, relative } from './utils/time.js';
+
+// Stage of the board each stored status belongs to, plus what happens next.
+// [lane, next step, needs an HR decision]
+const STAGE = {
+	'Applied': ['To screen', 'Shortlist or reject', true],
+	'Under Screening': ['To screen', 'Shortlist or reject', true],
+	'Shortlisted': ['Shortlisted', 'Schedule interviews', false],
+	'Interview Scheduled': ['Interviews', 'Waiting on interviews', false],
+	'Interview In Progress': ['Interviews', 'Waiting on interviews', false],
+	'All Rounds Complete': ['Decide', 'Select or not', true],
+	'Selected': ['Background check', 'Start background check', false],
+	'BGV Initiated': ['Background check', 'Waiting on previous employers', false],
+	'BGV Cleared': ['Offer', 'Create offer', true],
+	'BGV Not Applicable': ['Offer', 'Create offer', true],
+	'BGV Failed': ['Closed', 'Background check failed', false],
+	'Offer Sent': ['Offer', 'Waiting on candidate', false],
+	'Offer Accepted': ['Onboarding', 'Waiting on onboarding form', false],
+	'Onboarding Initiated': ['Onboarding', 'Complete onboarding', true],
+	'Onboarded': ['Joined', 'Joined', false],
+	'Rejected at Screening': ['Closed', 'Rejected at screening', false],
+	'Not Selected': ['Closed', 'Not selected', false],
+	'Offer Declined': ['Closed', 'Declined the offer', false]
+};
+const LANES = ['To screen', 'Shortlisted', 'Interviews', 'Decide', 'Background check', 'Offer', 'Onboarding', 'Joined'];
+const DECISION_LANES = { 'To screen': 1, 'Decide': 1, 'Offer': 1, 'Onboarding': 1 };
 
 export default {
-    name: 'CandidatesTab',
-    components: { Badge, Dialog, KpiCard, Toast },
-    data() {
-        return {
-            candidates: [],
-            jobs: [],
-            interviewers: [],
-            companies: [],
-            departments: [],
-            stats: { total: 0, shortlisted: 0, in_interviews: 0, selected: 0, offer_sent: 0 },
-            statuses: [
-                'Applied', 'Under Screening', 'Shortlisted', 'Rejected at Screening',
-                'Interview Scheduled', 'Interview In Progress', 'All Rounds Complete',
-                'Selected', 'Not Selected',
-                'BGV Initiated', 'BGV Cleared', 'BGV Failed', 'BGV Not Applicable',
-                'Offer Sent', 'Offer Accepted',
-                'Offer Declined', 'Onboarding Initiated', 'Onboarded'
-            ],
-            searchQuery: '',
-            filterJob: '',
-            filterStatus: '',
-            view: 'pipeline',
-            selected: null,
-            newStatus: '',
-            interviewHistory: [],
-            showSchedule: false,
-            scheduleForm: { rounds: [] },
-            scheduleLoading: false,
-            templateRounds: [],
-            showOffer: false,
-            offerForm: { designation: '', annual_ctc: 0, start_date: '', terms: '' },
-            offerLoading: false,
-            onboardForm: { company: '', department: '', company_email: '', temp_password: '' },
-            onboardLoading: false,
-            candidateDetailUrl: '',
-            // --- background verification ---
-            bgv: null,
-            bgvLoading: false,
-            bgvBusy: false,
-            bgvNotes: '',
-            canDecideBgv: false,
-            loading: false,
-            toast: { message: '', type: 'success', visible: false }
-        };
-    },
-    computed: {
-        filteredCandidates() {
-            return this.candidates.filter(c => {
-                if (this.searchQuery) {
-                    const q = this.searchQuery.toLowerCase();
-                    if (!(c.applicant_name && c.applicant_name.toLowerCase().includes(q)) &&
-                        !(c.email && c.email.toLowerCase().includes(q))) return false;
-                }
-                if (this.filterJob && c.job_opening !== this.filterJob) return false;
-                if (this.filterStatus && c.status !== this.filterStatus) return false;
-                return true;
-            });
-        },
-        pipelineColumns() {
-            let cols = [
-                'Applied', 'Under Screening', 'Shortlisted',
-                'Interview Scheduled', 'Interview In Progress',
-                'All Rounds Complete', 'Selected',
-                'BGV Initiated', 'BGV Cleared',
-                'Offer Sent',
-                'Offer Accepted', 'Onboarding Initiated', 'Onboarded'
-            ];
-            // When a status is chosen, show only that column
-            if (this.filterStatus) cols = cols.filter(s => s === this.filterStatus);
-            return cols.map(status => ({
-                status,
-                candidates: this.filteredCandidates.filter(c => c.status === status)
-            }));
-        },
-        allowedNextStatuses() {
-            if (!this.selected || !this.selected.status) return [];
-            const current = this.selected.status;
-            const transitions = {
-                'Applied': ['Under Screening', 'Rejected at Screening'],
-                'Under Screening': ['Shortlisted', 'Rejected at Screening'],
-                'Shortlisted': ['Rejected at Screening'],
-                'All Rounds Complete': ['Selected', 'Not Selected'],
-                'Interview In Progress': ['Not Selected'],
-                'Interview Scheduled': ['Not Selected']
-            };
-            return transitions[current] || [];
-        },
-
-        // The BGV panel appears from Selected onwards, and stays visible
-        // afterwards so the result can still be read.
-        showBgvSection() {
-            if (!this.selected) return false;
-            const s = this.selected.status;
-            const bgvStatuses = [
-                'Selected', 'BGV Initiated', 'BGV Cleared', 'BGV Failed', 'BGV Not Applicable',
-                'Offer Sent', 'Offer Accepted', 'Onboarding Initiated', 'Onboarded'
-            ];
-            return bgvStatuses.indexOf(s) !== -1;
-        },
-
-        bgvDecided() {
-            if (!this.bgv) return false;
-            return ['Cleared', 'Failed', 'Not Applicable'].indexOf(this.bgv.status) !== -1;
-        },
-
-        // wf_create_offer refuses unless the check is Cleared or Not Applicable,
-        // so the button only appears when the server would actually allow it.
-        canCreateOffer() {
-            if (!this.selected) return false;
-            const s = this.selected.status;
-            const eligible = ['Selected', 'BGV Cleared', 'BGV Not Applicable'];
-            if (eligible.indexOf(s) === -1) return false;
-            if (!this.bgv) return false;
-            return ['Cleared', 'Not Applicable'].indexOf(this.bgv.status) !== -1;
-        },
-
-        bgvFormUrl() {
-            if (!this.bgv || !this.bgv.access_token) return '';
-            return window.location.origin + '/bgv-form?token=' + this.bgv.access_token;
-        }
-    },
-    mounted() {
-        this.loadCandidates();
-        this.loadJobs();
-        this.loadInterviewers();
-        this.loadCompanies();
-        this.loadDepartments();
-    },
-    methods: {
-        async api(method, params = {}) {
-            return new Promise((resolve, reject) => {
-                frappe.call({
-                    method: method,
-                    args: params,
-                    callback: r => resolve(r.message),
-                    error: e => reject(e)
-                });
-            });
-        },
-        showToast(message, type = 'success') {
-            this.toast = { message, type, visible: true };
-        },
-        formatDate(date) {
-            if (!date) return '';
-            return new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-        },
-        scoreClass(score) {
-            if (score >= 70) return 'score-high';
-            if (score >= 40) return 'score-mid';
-            return 'score-low';
-        },
-        verdictText(v, responded) {
-            if (!responded) return '—';
-            if (v === 'Confirmed') return 'Confirmed';
-            if (v === 'Mismatch') return 'Mismatch';
-            return 'Not checked';
-        },
-        verdictClass(v, responded) {
-            if (!responded) return 'v-none';
-            if (v === 'Confirmed') return 'v-ok';
-            if (v === 'Mismatch') return 'v-bad';
-            return 'v-none';
-        },
-        async loadCandidates() {
-			this.loading = true;
-			try {
-				const res = await this.api('wf_get_dashboard_data');
-				// API returns bare array of applicants; compute stats locally
-				this.candidates = Array.isArray(res) ? res : (res.applicants || []);
-				this.stats = this.computeStats(this.candidates);
-			} catch (e) {
-				this.showToast('Failed to load candidates', 'error');
+	name: 'CandidatesTab',
+	components: { Badge, Dialog, DetailPanel, Toast },
+	data() {
+		return {
+			LANES, DECISION_LANES,
+			loading: true, candidates: [], jobs: [], interviewers: [], companies: [], departments: [],
+			view: 'board', q: '', jobFilter: '', showClosed: false,
+			showPanel: false, sel: null, detail: null, bgv: null, tab: 'summary',
+			conf: { show: false, to: '', title: '', note: '', button: '', busy: false },
+			sch: { show: false, rounds: [], busy: false },
+			off: { show: false, designation: '', annual_ctc: 0, start_date: '', terms: '', busy: false },
+			bgd: { show: false, action: '', title: '', note: '', button: '', notes: '', busy: false },
+			onb: { show: false, company: '', department: '', company_email: '', temp_password: '', busy: false },
+			toast: { show: false, msg: '', type: 'success' }
+		};
+	},
+	computed: {
+		lanes() { return this.showClosed ? LANES.concat(['Closed']) : LANES; },
+		tabs() {
+			return [
+				{ key: 'summary', label: 'Summary' },
+				{ key: 'interviews', label: 'Interviews' },
+				{ key: 'bgv', label: 'Background check' },
+				{ key: 'offer', label: 'Offer and joining' }
+			];
+		},
+		filtered() {
+			const q = this.q.trim().toLowerCase();
+			return this.candidates.filter(c => {
+				if (this.jobFilter && c.job_opening !== this.jobFilter) return false;
+				if (!q) return true;
+				return [c.applicant_name, c.email].join(' ').toLowerCase().includes(q);
+			});
+		},
+		closed() { return this.filtered.filter(c => this.laneOf(c) === 'Closed'); },
+		listRows() { return this.showClosed ? this.filtered : this.filtered.filter(c => this.laneOf(c) !== 'Closed'); },
+		cand() { return (this.detail && this.detail.candidate) || {}; },
+		offer() { return (this.detail && this.detail.offer) || null; },
+		onboarding() { return (this.detail && this.detail.onboarding) || null; },
+		interviews() { return (this.detail && this.detail.interviews) || []; },
+		bgvFormUrl() {
+			if (!this.bgv || !this.bgv.access_token) return '';
+			return window.location.origin + '/bgv-form?token=' + this.bgv.access_token;
+		},
+		// Only the steps that make sense from the current status, matching what the server allows.
+		actions() {
+			const c = this.cand;
+			if (!c.status) return [];
+			const a = [];
+			const st = c.status;
+			if (['Applied', 'Under Screening'].includes(st)) {
+				a.push({ label: 'Reject', cls: 'dan', run: () => this.askStatus('Rejected at Screening') });
+				a.push({ label: 'Shortlist', cls: 'pri', run: () => this.askStatus('Shortlisted') });
+			} else if (st === 'Shortlisted') {
+				a.push({ label: 'Reject', cls: 'dan', run: () => this.askStatus('Rejected at Screening') });
+				a.push({ label: 'Schedule interviews', cls: 'pri', run: () => this.openSchedule() });
+			} else if (['Interview Scheduled', 'Interview In Progress'].includes(st)) {
+				a.push({ label: 'Not selected', cls: 'dan', run: () => this.askStatus('Not Selected') });
+			} else if (st === 'All Rounds Complete') {
+				a.push({ label: 'Not selected', cls: 'dan', run: () => this.askStatus('Not Selected') });
+				a.push({ label: 'Select', cls: 'pri', run: () => this.askStatus('Selected') });
+			} else if (st === 'Selected' && !this.bgv) {
+				a.push({ label: 'Start background check', cls: 'pri', run: () => this.startBgv() });
+			} else if (this.bgv && this.bgv.status === 'Ready for HR Review') {
+				a.push({ label: 'Fail', cls: 'dan', run: () => this.askBgv('Failed') });
+				a.push({ label: 'Waive', cls: '', run: () => this.askBgv('Not Applicable') });
+				a.push({ label: 'Clear', cls: 'pri', run: () => this.askBgv('Cleared') });
+			} else if (['BGV Cleared', 'BGV Not Applicable'].includes(st) && !this.offer) {
+				a.push({ label: 'Create offer', cls: 'pri', run: () => this.openOffer() });
+			} else if (st === 'Onboarding Initiated' && this.onboarding && this.onboarding.status === 'Submitted') {
+				a.push({ label: 'Complete onboarding', cls: 'pri', run: () => this.openOnboard() });
 			}
+			return a;
+		}
+	},
+	mounted() {
+		this.load();
+		this.api('wf_get_job_openings').then(j => { this.jobs = j || []; }).catch(() => {});
+	},
+	methods: {
+		api(method, args = {}) {
+			return new Promise((resolve, reject) => {
+				frappe.call({ method, args, callback: r => resolve(r.message), error: reject });
+			});
+		},
+		quiet(method, args = {}) { return this.api(method, args).catch(() => null); },
+		notify(msg, type = 'success') { this.toast = { show: true, msg, type }; },
+		async load() {
+			const rows = await this.quiet('wf_get_dashboard_data');
+			this.candidates = rows || [];
 			this.loading = false;
 		},
-		computeStats(list) {
-			const inInterviewStatuses = ['Interview Scheduled', 'Interview In Progress', 'All Rounds Complete'];
-			const offerStatuses = ['Offer Sent', 'Offer Accepted', 'Offer Declined'];
-			return {
-				total: list.length,
-				shortlisted: list.filter(c => c.status === 'Shortlisted').length,
-				in_interviews: list.filter(c => inInterviewStatuses.includes(c.status)).length,
-				selected: list.filter(c => c.status === 'Selected').length,
-				offer_sent: list.filter(c => offerStatuses.includes(c.status)).length
-			};
+		laneOf(c) { return (STAGE[c.status] || ['Closed'])[0]; },
+		nextStep(c) { return (STAGE[c.status] || ['', c.status])[1]; },
+		isDecision(c) { return !!(STAGE[c.status] || [])[2]; },
+		inLane(lane) { return this.filtered.filter(c => this.laneOf(c) === lane); },
+		journeyClass(i) {
+			const now = LANES.indexOf(this.laneOf(this.cand));
+			if (now < 0) return '';
+			return i < now ? 'done' : (i === now ? 'now' : '');
 		},
-        async loadJobs() {
-            try {
-                const res = await this.api('wf_get_job_openings');
-                // wf_get_job_openings returns a bare array
-                this.jobs = Array.isArray(res) ? res : (res.jobs || []);
-            } catch (e) { this.jobs = []; }
-        },
-        async loadInterviewers() {
-            try {
-                this.interviewers = await this.api('frappe.client.get_list', {
-                    doctype: 'User',
-                    fields: ['name', 'full_name'],
-                    filters: { enabled: 1, user_type: 'System User' },
-                    limit_page_length: 0,
-                    order_by: 'full_name asc'
-                });
-            } catch (e) { this.interviewers = []; }
-        },
-        async loadCompanies() {
-            try {
-                // wf_get_companies returns ["name", ...]
-                const r = await this.api('wf_get_companies');
-                this.companies = (r || []).map(n => ({ name: n }));
-            } catch (e) { this.companies = []; }
-        },
-        async loadDepartments() {
-            try {
-                // wf_get_departments returns [{name, company}]
-                const r = await this.api('wf_get_departments');
-                this.departments = (r || []).map(d => ({ name: d.name || d }));
-            } catch (e) { this.departments = []; }
-        },
-        async loadCandidateDetailUrl(applicantName) {
-            this.candidateDetailUrl = '';
-            if (!applicantName) return;
-            try {
-                const rows = await this.api('frappe.client.get_list', {
-                    doctype: 'WF Candidate Detail',
-                    filters: { applicant: applicantName },
-                    fields: ['access_token'],
-                    limit_page_length: 1
-                });
-                if (rows && rows[0] && rows[0].access_token) {
-                    const origin = window.location.origin;
-                    this.candidateDetailUrl = origin + '/candidate-onboarding?token=' + rows[0].access_token;
-                }
-            } catch (e) { this.candidateDetailUrl = ''; }
-        },
+		scoreText(c) { return c.ai_score ? c.ai_score + (c.ai_grade ? ' ' + c.ai_grade : '') : '—'; },
+		scoreClass(c) { return c.ai_score ? 's-' + (c.ai_grade || 'X') : 's-none'; },
+		shortDate(d) { return shortDate(d); },
+		rel(d) { return relative(d); },
+		money(v) { return v ? '₹ ' + Number(v).toLocaleString('en-IN') : '—'; },
+		copy(text) {
+			if (navigator.clipboard) navigator.clipboard.writeText(text);
+			this.notify('Link copied.');
+		},
 
-        // ---------------- background verification ----------------
-        async loadBgv(applicantName) {
-            this.bgv = null;
-            this.bgvNotes = '';
-            this.canDecideBgv = false;
-            if (!applicantName || !this.showBgvSection) return;
-            this.bgvLoading = true;
-            try {
-                const res = await this.api('wf_get_bgv_checks', { applicant: applicantName });
-                if (res && res.state === 'success') {
-                    this.bgv = res.check || null;
-                    this.canDecideBgv = !!res.can_decide;
-                }
-            } catch (e) {
-                // a coordinator without permission just sees no panel content
-                this.bgv = null;
-            }
-            this.bgvLoading = false;
-        },
+		async open(c) {
+			this.sel = c; this.detail = null; this.bgv = null; this.tab = 'summary'; this.showPanel = true;
+			await this.refresh(c.name);
+		},
+		async refresh(name) {
+			const [detail, bgvRes] = await Promise.all([
+				this.quiet('wf_get_candidate_detail', { applicant: name }),
+				this.quiet('wf_get_bgv_checks', { applicant: name })
+			]);
+			this.detail = detail;
+			this.bgv = (bgvRes && bgvRes.check) || null;
+			if (!this.interviewers.length) this.loadLists();
+		},
+		async loadLists() {
+			const [users, comps, deps] = await Promise.all([
+				this.quiet('frappe.client.get_list', { doctype: 'User', fields: ['name', 'full_name'], filters: { enabled: 1, user_type: 'System User' }, limit_page_length: 0, order_by: 'full_name asc' }),
+				this.quiet('wf_get_companies'), this.quiet('wf_get_departments')
+			]);
+			this.interviewers = users || [];
+			this.companies = comps || [];
+			this.departments = deps || [];
+		},
+		closePanel() { this.showPanel = false; this.sel = null; this.detail = null; this.bgv = null; },
 
-        async startBgv() {
-            if (!this.selected) return;
-            if (!confirm('Start background verification for ' + this.selected.applicant_name +
-                         '? They will be emailed a form to list their previous employers.')) return;
-            this.bgvBusy = true;
-            try {
-                const res = await this.api('wf_start_bgv', { data: { applicant: this.selected.name } });
-                this.showToast((res && res.message) || 'Background check started', 'success');
-                await this.loadBgv(this.selected.name);
-                this.loadCandidates();
-            } catch (e) {
-                this.showToast('Could not start the background check', 'error');
-            }
-            this.bgvBusy = false;
-        },
+		askStatus(to) {
+			const name = this.cand.applicant_name;
+			const map = {
+				'Shortlisted': ['Shortlist ' + name + '?', 'They move on to interviews.', 'Shortlist'],
+				'Rejected at Screening': ['Reject ' + name + '?', 'They leave the pipeline. You can still see them under closed.', 'Reject'],
+				'Selected': ['Select ' + name + '?', 'The background check can then be started.', 'Select'],
+				'Not Selected': ['Mark ' + name + ' as not selected?', 'They leave the pipeline.', 'Confirm']
+			}[to];
+			this.conf = { show: true, to, title: map[0], note: map[1], button: map[2], busy: false };
+		},
+		async doStatus() {
+			this.conf.busy = true;
+			try {
+				await this.api('wf_update_applicant_status', { applicant_name: this.cand.name, status: this.conf.to });
+				this.notify('Updated.');
+				this.conf.show = false;
+				await this.refresh(this.cand.name);
+				await this.load();
+			} catch (e) { /* frappe shows the reason */ }
+			this.conf.busy = false;
+		},
 
-        async decideBgv(action) {
-            if (!this.bgv) return;
-            const notes = (this.bgvNotes || '').trim();
-            if ((action === 'Failed' || action === 'Not Applicable') && !notes) {
-                this.showToast('Please give a reason before marking this ' + action, 'error');
-                return;
-            }
-            const confirmText = {
-                'Cleared': 'Clear this background check? The offer letter can then be issued.',
-                'Failed': 'Mark this check as Failed? No offer will be issued for this candidate.',
-                'Not Applicable': 'Waive verification for this candidate? The offer letter can then be issued.'
-            };
-            if (!confirm(confirmText[action])) return;
+		openSchedule() {
+			const tpl = (this.jobs.find(j => j.name === this.cand.job_opening) || {}).interview_template;
+			this.sch = { show: true, rounds: [], busy: false };
+			if (tpl) {
+				this.quiet('wf_get_interview_templates').then(list => {
+					const t = (list || []).find(x => x.name === tpl);
+					const rounds = (t && t.rounds) || [];
+					this.sch.rounds = rounds.length ? rounds.map(r => ({
+						round_name: r.round_name || '', interviewer: r.default_interviewer || '',
+						scheduled_date: '', scheduled_time: '11:00', duration_minutes: r.duration || 45
+					})) : [this.blankRound()];
+				});
+			} else {
+				this.sch.rounds = [this.blankRound()];
+			}
+		},
+		blankRound() { return { round_name: 'Round ' + (this.sch.rounds.length + 1), interviewer: '', scheduled_date: '', scheduled_time: '11:00', duration_minutes: 45 }; },
+		addRound() { this.sch.rounds.push(this.blankRound()); },
+		async doSchedule() {
+			const bad = this.sch.rounds.filter(r => !r.scheduled_date || !r.interviewer);
+			if (bad.length) { this.notify('Every round needs a date and an interviewer.', 'error'); return; }
+			this.sch.busy = true;
+			try {
+				await this.api('wf_schedule_interviews', { data: { applicant: this.cand.name, rounds: this.sch.rounds } });
+				this.notify('Interviews scheduled. Invites sent from hr@.');
+				this.sch.show = false;
+				await this.refresh(this.cand.name);
+				await this.load();
+				this.tab = 'interviews';
+			} catch (e) { /* shown by frappe */ }
+			this.sch.busy = false;
+		},
 
-            this.bgvBusy = true;
-            try {
-                const res = await this.api('wf_bgv_hr_decide', {
-                    data: { bgv: this.bgv.name, action: action, notes: notes }
-                });
-                this.showToast((res && res.message) || 'Decision recorded', 'success');
-                this.bgvNotes = '';
-                await this.loadBgv(this.selected.name);
-                this.loadCandidates();
-            } catch (e) {
-                this.showToast('Could not record the decision', 'error');
-            }
-            this.bgvBusy = false;
-        },
+		async startBgv() {
+			try {
+				const res = await this.api('wf_start_bgv', { data: { applicant: this.cand.name } });
+				this.notify((res && res.message) || 'Background check started.');
+				await this.refresh(this.cand.name);
+				await this.load();
+				this.tab = 'bgv';
+			} catch (e) { /* shown by frappe */ }
+		},
+		askBgv(action) {
+			const map = {
+				'Cleared': ['Clear the background check?', 'The offer letter can then be issued.', 'Clear'],
+				'Failed': ['Fail the background check?', 'No offer will be issued for this candidate.', 'Fail'],
+				'Not Applicable': ['Waive the background check?', 'Use this for freshers, or when the employer no longer exists.', 'Waive']
+			}[action];
+			this.bgd = { show: true, action, title: map[0], note: map[1], button: map[2], notes: '', busy: false };
+		},
+		async doBgvDecide() {
+			if (this.bgd.action !== 'Cleared' && !this.bgd.notes.trim()) { this.notify('Please give a reason.', 'error'); return; }
+			this.bgd.busy = true;
+			try {
+				const res = await this.api('wf_bgv_hr_decide', { data: { bgv: this.bgv.name, action: this.bgd.action, notes: this.bgd.notes.trim() } });
+				this.notify((res && res.message) || 'Recorded.');
+				this.bgd.show = false;
+				await this.refresh(this.cand.name);
+				await this.load();
+			} catch (e) { /* shown by frappe */ }
+			this.bgd.busy = false;
+		},
 
-        async overrideCompany(c) {
-            if (!this.bgv) return;
-            const notes = prompt(
-                'Recording a response for ' + c.company_name + ' manually.\n\n' +
-                'What was confirmed, and how? (e.g. spoke to their HR on the phone, all details match)');
-            if (notes === null) return;
-            const clean = (notes || '').trim();
-            if (!clean) {
-                this.showToast('Please record what was confirmed and how', 'error');
-                return;
-            }
-            this.bgvBusy = true;
-            try {
-                const res = await this.api('wf_bgv_hr_decide', {
-                    data: {
-                        bgv: this.bgv.name,
-                        action: 'override_company',
-                        company_row: c.row,
-                        verdict: 'Verified Correct',
-                        notes: clean
-                    }
-                });
-                this.showToast((res && res.message) || 'Response recorded', 'success');
-                await this.loadBgv(this.selected.name);
-            } catch (e) {
-                this.showToast('Could not record the response', 'error');
-            }
-            this.bgvBusy = false;
-        },
+		openOffer() {
+			this.off = { show: true, designation: this.detail.position.title || '', annual_ctc: 0, start_date: '', terms: '', busy: false };
+		},
+		async doOffer() {
+			if (!this.off.designation.trim()) { this.notify('Designation is needed.', 'error'); return; }
+			if (!this.off.annual_ctc || this.off.annual_ctc <= 0) { this.notify('Enter the annual CTC.', 'error'); return; }
+			this.off.busy = true;
+			try {
+				const res = await this.api('wf_create_offer', {
+					data: {
+						applicant: this.cand.name, designation: this.off.designation.trim(),
+						annual_ctc: this.off.annual_ctc, start_date: this.off.start_date, terms: this.off.terms
+					}
+				});
+				this.notify((res && res.message) || 'Offer sent.');
+				this.off.show = false;
+				await this.refresh(this.cand.name);
+				await this.load();
+				this.tab = 'offer';
+			} catch (e) { /* shown by frappe */ }
+			this.off.busy = false;
+		},
 
-        copyUrl(url) {
-            if (!url) return;
-            navigator.clipboard.writeText(url).then(() => {
-                this.showToast('Link copied to clipboard', 'success');
-            }).catch(() => {
-                this.showToast('Could not copy — please select and copy manually', 'error');
-            });
-        },
-        async completeOnboarding() {
-            if (!this.onboardForm.company) { this.showToast('Please select a company', 'error'); return; }
-            if (!this.onboardForm.company_email) { this.showToast('Please enter company email', 'error'); return; }
-            if (!this.onboardForm.temp_password) { this.showToast('Please set a temporary password', 'error'); return; }
-            if (!confirm('This will create the Employee record and send credentials to the candidate. Proceed?')) return;
-
-            this.onboardLoading = true;
-            try {
-                const res = await this.api('wf_complete_onboarding', {
-                    data: {
-                        applicant: this.selected.name,
-                        company: this.onboardForm.company,
-                        department: this.onboardForm.department,
-                        company_email: this.onboardForm.company_email,
-                        temp_password: this.onboardForm.temp_password
-                    }
-                });
-                this.showToast('Onboarding complete! Employee ID: ' + (res.employee_id || ''), 'success');
-                this.selected.status = 'Onboarded';
-                this.onboardForm = { company: '', department: '', company_email: '', temp_password: '' };
-                this.loadCandidates();
-            } catch (e) {
-                this.showToast('Onboarding failed. Please check the details and try again.', 'error');
-            }
-            this.onboardLoading = false;
-        },
-        async openDetail(iv) {
-            this.selected = iv;
-            this.newStatus = iv.status;
-            this.onboardForm = { company: '', department: '', company_email: '', temp_password: '' };
-            try {
-                this.interviewHistory = await this.api('frappe.client.get_list', {
-                    doctype: 'WF Interview',
-                    filters: { applicant: iv.name },
-                    fields: ['name', 'round_number', 'round_name', 'scheduled_date',
-                             'interviewer', 'status', 'rating', 'recommendation', 'google_meet_link'],
-                    order_by: 'round_number asc',
-                    limit_page_length: 0
-                });
-            } catch (e) { this.interviewHistory = []; }
-            this.loadCandidateDetailUrl(iv.name);
-            this.loadBgv(iv.name);
-        },
-        closeDetail() {
-            this.selected = null;
-            this.bgv = null;
-        },
-        async changeStatus() {
-            if (!this.newStatus) return;
-            try {
-                await this.api('wf_update_applicant_status', {
-                    applicant_name: this.selected.name,
-                    status: this.newStatus
-                });
-                this.showToast('Status updated', 'success');
-                this.selected.status = this.newStatus;
-                this.loadCandidates();
-                this.loadBgv(this.selected.name);
-            } catch (e) {
-                this.showToast('Failed to update status', 'error');
-            }
-        },
-        async openSchedule(candidate) {
-            this.selected = candidate;
-            let rounds = [];
-            try {
-                const templates = await this.api('wf_get_interview_templates');
-                const job = this.jobs.find(j => j.name === candidate.job_opening);
-                if (job && job.interview_template) {
-                    const tmpl = templates.find(t => t.name === job.interview_template);
-                    if (tmpl && tmpl.rounds) {
-                        rounds = tmpl.rounds.map(r => ({
-                            round_name: r.round_name || '',
-                            interviewer: r.default_interviewer || '',
-                            scheduled_date: '',
-                            scheduled_time: '',
-                            duration_minutes: r.duration || 30
-                        }));
-                    }
-                }
-            } catch (e) {}
-            if (rounds.length === 0) {
-                rounds = [{
-                    round_name: 'Round 1',
-                    interviewer: '',
-                    scheduled_date: '',
-                    scheduled_time: '',
-                    duration_minutes: 30
-                }];
-            }
-            this.scheduleForm = { rounds };
-            this.showSchedule = true;
-        },
-        async scheduleInterviews() {
-            const invalidRounds = this.scheduleForm.rounds.filter(r => !r.scheduled_date);
-            if (invalidRounds.length > 0) {
-                this.showToast('All rounds need a date', 'error');
-                return;
-            }
-            this.scheduleLoading = true;
-            try {
-                await this.api('wf_schedule_interviews', {
-                    data: {
-                        applicant: this.selected.name,
-                        rounds: this.scheduleForm.rounds
-                    }
-                });
-                this.showToast('Interviews scheduled!', 'success');
-                this.showSchedule = false;
-                this.selected.status = 'Interview Scheduled';
-                this.loadCandidates();
-            } catch (e) {
-                this.showToast('Failed to schedule interviews', 'error');
-            }
-            this.scheduleLoading = false;
-        },
-        openOffer(candidate) {
-            this.selected = candidate;
-            const job = this.jobs.find(j => j.name === candidate.job_opening);
-            this.offerForm = {
-                designation: job ? job.job_title : '',
-                annual_ctc: 0,
-                start_date: '',
-                terms: ''
-            };
-            this.showOffer = true;
-        },
-        async submitOffer() {
-            if (!this.offerForm.designation) {
-                this.showToast('Designation is required', 'error');
-                return;
-            }
-            this.offerLoading = true;
-            try {
-                await this.api('wf_create_offer', {
-                    data: {
-                        applicant: this.selected.name,
-                        ...this.offerForm
-                    }
-                });
-                this.showToast('Offer created and sent!', 'success');
-                this.showOffer = false;
-                this.selected.status = 'Offer Sent';
-                this.loadCandidates();
-            } catch (e) {
-                this.showToast('Failed to create offer', 'error');
-            }
-            this.offerLoading = false;
-        }
-    }
+		openOnboard() {
+			this.onb = { show: true, company: '', department: '', company_email: '', temp_password: '', busy: false };
+		},
+		async doOnboard() {
+			for (const f of [['company', 'company'], ['company_email', 'company email'], ['temp_password', 'temporary password']]) {
+				if (!String(this.onb[f[0]] || '').trim()) { this.notify('Please fill the ' + f[1] + '.', 'error'); return; }
+			}
+			this.onb.busy = true;
+			try {
+				const res = await this.api('wf_complete_onboarding', {
+					data: {
+						applicant: this.cand.name, company: this.onb.company, department: this.onb.department,
+						company_email: this.onb.company_email.trim(), temp_password: this.onb.temp_password
+					}
+				});
+				this.notify((res && res.message) || 'Onboarding complete.');
+				this.onb.show = false;
+				await this.refresh(this.cand.name);
+				await this.load();
+			} catch (e) { /* shown by frappe */ }
+			this.onb.busy = false;
+		}
+	}
 };
 </script>
 
 <style scoped>
-.candidates-tab { padding: 24px 0; }
-
-.stats-row {
-    display: grid;
-    grid-template-columns: repeat(5, 1fr);
-    gap: 16px;
-    margin-bottom: 24px;
-}
-
-.toolbar {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 12px;
-    margin-bottom: 20px;
-    flex-wrap: wrap;
-}
-.toolbar-left {
-    display: flex;
-    gap: 12px;
-    flex: 1;
-    min-width: 300px;
-}
-.search-input {
-    flex: 2;
-    padding: 10px 14px;
-    border: 1px solid #d1d5db;
-    border-radius: 8px;
-    font-size: 14px;
-}
-.filter-select {
-    padding: 10px 14px;
-    border: 1px solid #d1d5db;
-    border-radius: 8px;
-    font-size: 14px;
-    background: #fff;
-    cursor: pointer;
-}
-
-.view-toggle {
-    display: inline-flex;
-    border: 1px solid #d1d5db;
-    border-radius: 8px;
-    overflow: hidden;
-}
-.toggle-btn {
-    padding: 10px 16px;
-    border: none;
-    background: #fff;
-    cursor: pointer;
-    font-size: 14px;
-    font-weight: 500;
-    color: #6b7280;
-}
-.toggle-btn.active {
-    background: #4f46e5;
-    color: #fff;
-}
-
-.kanban-board {
-    display: flex;
-    gap: 12px;
-    overflow-x: auto;
-    padding-bottom: 12px;
-}
-.kanban-column {
-    flex: 0 0 260px;
-    background: #f3f4f6;
-    border-radius: 10px;
-    padding: 12px;
-}
-.kanban-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 12px;
-    padding: 0 4px;
-}
-.kanban-title { font-weight: 600; color: #374151; font-size: 14px; }
-.kanban-count {
-    background: #fff;
-    padding: 2px 10px;
-    border-radius: 12px;
-    font-size: 12px;
-    color: #6b7280;
-    font-weight: 600;
-}
-.kanban-cards { display: flex; flex-direction: column; gap: 8px; }
-.kanban-card {
-    background: #fff;
-    padding: 12px;
-    border-radius: 8px;
-    cursor: pointer;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-    transition: transform 0.15s ease;
-}
-.kanban-card:hover { transform: translateY(-2px); }
-.card-name { font-weight: 600; color: #111827; font-size: 14px; }
-.card-job { color: #6b7280; font-size: 12px; margin-top: 4px; }
-.card-footer {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-top: 8px;
-}
-.ai-score {
-    background: #ede9fe;
-    color: #6d28d9;
-    padding: 2px 8px;
-    border-radius: 10px;
-    font-size: 11px;
-    font-weight: 600;
-}
-.card-date { color: #9ca3af; font-size: 11px; }
-
-.table-wrap {
-    background: #fff;
-    border-radius: 12px;
-    overflow: hidden;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-}
-.wf-table { width: 100%; border-collapse: collapse; }
-.wf-table th {
-    background: #f9fafb;
-    padding: 12px 16px;
-    text-align: left;
-    font-weight: 600;
-    color: #374151;
-    font-size: 13px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-.wf-table td {
-    padding: 14px 16px;
-    border-top: 1px solid #f3f4f6;
-    font-size: 14px;
-    color: #4b5563;
-}
-.wf-table tbody tr {
-    cursor: pointer;
-    transition: background 0.15s ease;
-}
-.wf-table tbody tr:hover { background: #f9fafb; }
-.td-name { font-weight: 600; color: #111827; }
-
-.score-badge {
-    padding: 4px 10px;
-    border-radius: 10px;
-    font-size: 12px;
-    font-weight: 600;
-}
-.score-high { background: #dcfce7; color: #166534; }
-.score-mid { background: #fef3c7; color: #92400e; }
-.score-low { background: #fee2e2; color: #991b1b; }
-.score-none { color: #9ca3af; font-size: 14px; }
-
-.detail-panel { padding: 0 4px; }
-.detail-section { margin-bottom: 24px; }
-.detail-section h4 {
-    margin: 0 0 12px;
-    color: #111827;
-    font-size: 15px;
-    font-weight: 600;
-}
-.detail-row {
-    display: flex;
-    justify-content: space-between;
-    padding: 8px 0;
-    border-bottom: 1px solid #f3f4f6;
-}
-.detail-label { color: #6b7280; font-weight: 500; }
-
-.status-actions {
-    display: flex;
-    gap: 10px;
-    align-items: center;
-    flex-wrap: wrap;
-}
-.form-input {
-    padding: 8px 12px;
-    border: 1px solid #d1d5db;
-    border-radius: 6px;
-    font-size: 14px;
-    flex: 1;
-    min-width: 180px;
-}
-.btn-primary {
-    background: #4f46e5;
-    color: #fff;
-    padding: 8px 20px;
-    border: none;
-    border-radius: 6px;
-    font-weight: 500;
-    cursor: pointer;
-}
-.btn-primary:hover { background: #4338ca; }
-.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
-.btn-secondary {
-    background: #fff;
-    color: #374151;
-    border: 1px solid #d1d5db;
-    border-radius: 6px;
-    font-weight: 500;
-    cursor: pointer;
-}
-.btn-secondary:hover { background: #f9fafb; }
-.btn-schedule {
-    background: #10b981;
-    color: #fff;
-    padding: 8px 16px;
-    border: none;
-    border-radius: 6px;
-    font-weight: 500;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 14px;
-}
-.btn-schedule:hover { background: #059669; }
-.btn-offer {
-    background: #f59e0b;
-    color: #fff;
-    padding: 8px 16px;
-    border: none;
-    border-radius: 6px;
-    font-weight: 500;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 14px;
-}
-.btn-offer:hover { background: #d97706; }
-.btn-icon { font-size: 16px; }
-
-/* ---------- background verification ---------- */
-.bgv-loading { color: #6b7280; font-size: 13px; padding: 12px 0; }
-.bgv-help { color: #6b7280; font-size: 13px; line-height: 1.6; margin: 0 0 12px; }
-.bgv-head {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-wrap: wrap;
-    margin: 0 0 12px;
-}
-.bgv-meta { color: #6b7280; font-size: 13px; }
-.bgv-note {
-    background: #eff6ff;
-    border-left: 3px solid #3b82f6;
-    padding: 10px 14px;
-    border-radius: 4px;
-    color: #1e40af;
-    font-size: 13px;
-    line-height: 1.6;
-    margin: 0 0 12px;
-}
-.bgv-link-row {
-    display: flex;
-    gap: 8px;
-    align-items: center;
-    margin-top: 10px;
-}
-.bgv-decided {
-    background: #f0fdf4;
-    border-left: 3px solid #10b981;
-    padding: 10px 14px;
-    border-radius: 4px;
-    color: #065f46;
-    font-size: 13px;
-    line-height: 1.6;
-    margin: 0 0 12px;
-}
-.bgv-co {
-    border: 1px solid #e5e7eb;
-    border-radius: 8px;
-    padding: 14px;
-    margin: 0 0 12px;
-    background: #fff;
-}
-.bgv-co-head {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 10px;
-    margin: 0 0 10px;
-    flex-wrap: wrap;
-}
-.bgv-co-head strong { color: #111827; font-size: 15px; }
-.bgv-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.bgv-table th {
-    text-align: left;
-    padding: 6px 8px;
-    font-size: 11px;
-    color: #6b7280;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    border-bottom: 1px solid #e5e7eb;
-    background: #f9fafb;
-}
-.bgv-table td {
-    padding: 8px;
-    border-bottom: 1px solid #f3f4f6;
-    color: #374151;
-    vertical-align: top;
-}
-.bgv-table tr:last-child td { border-bottom: none; }
-.bgv-f { color: #6b7280; font-weight: 600; width: 28%; }
-.v-ok { color: #059669; font-weight: 600; }
-.v-bad { color: #dc2626; font-weight: 700; }
-.v-none { color: #9ca3af; }
-.bgv-verifier { color: #6b7280; font-size: 12px; margin-top: 10px; line-height: 1.5; }
-.bgv-mismatch {
-    background: #fffbeb;
-    border-left: 3px solid #f59e0b;
-    padding: 10px 12px;
-    border-radius: 4px;
-    color: #92400e;
-    font-size: 13px;
-    line-height: 1.5;
-    margin-top: 10px;
-}
-.bgv-decide {
-    border-top: 1px solid #f3f4f6;
-    padding-top: 16px;
-    margin-top: 4px;
-}
-.btn-bgv {
-    background: #4f46e5;
-    color: #fff;
-    padding: 10px 20px;
-    border: none;
-    border-radius: 6px;
-    font-weight: 600;
-    font-size: 14px;
-    cursor: pointer;
-}
-.btn-bgv:hover { background: #4338ca; }
-.btn-bgv:disabled { opacity: 0.5; cursor: not-allowed; }
-.btn-bgv-small {
-    background: #fff;
-    color: #4f46e5;
-    border: 1.5px solid #c7d2fe;
-    padding: 7px 14px;
-    border-radius: 6px;
-    font-size: 12px;
-    font-weight: 600;
-    cursor: pointer;
-    margin-top: 12px;
-}
-.btn-bgv-small:hover { background: #eef2ff; }
-.btn-bgv-clear, .btn-bgv-fail, .btn-bgv-na {
-    padding: 10px 18px;
-    border-radius: 6px;
-    font-size: 14px;
-    font-weight: 600;
-    cursor: pointer;
-}
-.btn-bgv-clear { background: #10b981; color: #fff; border: none; }
-.btn-bgv-clear:hover { background: #059669; }
-.btn-bgv-fail { background: #fff; color: #ef4444; border: 1.5px solid #ef4444; }
-.btn-bgv-fail:hover { background: #ef4444; color: #fff; }
-.btn-bgv-na { background: #fff; color: #6b7280; border: 1.5px solid #d1d5db; }
-.btn-bgv-na:hover { background: #f3f4f6; }
-.btn-bgv-clear:disabled, .btn-bgv-fail:disabled, .btn-bgv-na:disabled { opacity: 0.5; cursor: not-allowed; }
-
-.interview-list { display: flex; flex-direction: column; gap: 12px; }
-.interview-item {
-    background: #f9fafb;
-    padding: 12px;
-    border-radius: 8px;
-    border-left: 3px solid #4f46e5;
-}
-.iv-header {
-    display: flex;
-    justify-content: space-between;
-    margin-bottom: 6px;
-}
-.iv-round { font-weight: 600; color: #374151; }
-.iv-details { color: #6b7280; font-size: 13px; margin-bottom: 6px; }
-.iv-link {
-    color: #4f46e5;
-    text-decoration: none;
-    font-size: 13px;
-    font-weight: 500;
-    display: inline-block;
-    margin-right: 8px;
-}
-.iv-link:hover { text-decoration: underline; }
-
-.round-block {
-    padding: 12px;
-    background: #f9fafb;
-    border-radius: 8px;
-    margin-bottom: 12px;
-}
-.round-block h4 { margin: 0 0 8px; }
-
-.form-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 12px;
-}
-.form-row {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 12px;
-}
-.form-group { margin-bottom: 12px; }
-.form-group label {
-    display: block;
-    margin-bottom: 4px;
-    font-size: 12px;
-    font-weight: 500;
-    color: #6b7280;
-}
-
-@media (max-width: 768px) {
-    .stats-row {
-        grid-template-columns: 1fr 1fr;
-    }
-    .toolbar-left {
-        flex-direction: column;
-    }
-    .form-grid, .form-row {
-        grid-template-columns: 1fr;
-    }
-    .kanban-column {
-        flex: 0 0 220px;
-    }
+.head { display: flex; align-items: flex-end; gap: 16px; flex-wrap: wrap; margin-bottom: 18px; }
+.head h1 { margin: 0; font-size: 26px; font-weight: 600; letter-spacing: -.02em; color: var(--wf-ink); }
+.head p { margin: 5px 0 0; color: var(--wf-mut); max-width: 72ch; }
+.head .seg { margin-left: auto; }
+.seg { display: inline-flex; border: 1px solid var(--wf-line); border-radius: 9px; padding: 3px; gap: 2px; background: #fff; }
+.seg button { border: 0; background: transparent; height: 32px; padding: 0 14px; border-radius: 7px; font: inherit; font-weight: 500; color: var(--wf-mut); cursor: pointer; }
+.seg button.on { background: var(--wf-primary-tint); color: var(--wf-primary-2); }
+.filters { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 16px; }
+.filters .in { width: auto; }
+.search { flex: 1 1 260px; min-width: 220px; max-width: 460px; }
+.sel { flex: 0 0 auto; min-width: 210px; }
+.chip { height: 40px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--wf-line); background: #fff; color: var(--wf-mut); font: inherit; font-size: 13.5px; font-weight: 500; cursor: pointer; }
+.chip.on { background: var(--wf-primary); border-color: var(--wf-primary); color: #fff; }
+.chip .c { opacity: .7; margin-left: 3px; }
+.board { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(220px, 1fr); gap: 14px; overflow-x: auto; padding-bottom: 10px; }
+.lane { background: #ECEEF6; border-radius: 12px; padding: 10px; min-height: 300px; }
+.lane-h { display: flex; align-items: center; gap: 8px; padding: 4px 6px 10px; font-weight: 600; font-size: 13.5px; color: var(--wf-ink); }
+.lane-h .c { margin-left: auto; color: var(--wf-mut); font-weight: 500; }
+.dm { width: 8px; height: 8px; transform: rotate(45deg); border: 2px solid var(--wf-amber); border-radius: 2px; }
+.card { display: block; width: 100%; text-align: left; background: #fff; border: 1px solid var(--wf-line); border-radius: 10px; padding: 12px 13px; margin-bottom: 8px; font: inherit; cursor: pointer; }
+.card:hover { border-color: #C7D2FE; }
+.card.dec { box-shadow: inset 3px 0 0 var(--wf-amber); }
+.nm { font-weight: 600; color: var(--wf-ink); }
+.ps { font-size: 12.5px; color: var(--wf-mut); margin: 2px 0 0; }
+.nx { font-size: 12.5px; color: var(--wf-mut); margin: 4px 0 10px; }
+.nx.dec { color: var(--wf-amber-ink); font-weight: 600; }
+.rw { display: flex; align-items: center; gap: 8px; }
+.rw .sp { flex: 1; }
+.none { font-size: 12.5px; color: var(--wf-mut); padding: 6px; }
+.panel { background: #fff; border: 1px solid var(--wf-line); border-radius: 14px; overflow: hidden; }
+.t { width: 100%; border-collapse: collapse; }
+.t th { text-align: left; font-size: 12.5px; font-weight: 500; color: var(--wf-mut-2); padding: 14px 16px 10px; border-bottom: 1px solid var(--wf-line); }
+.t td { padding: 13px 16px; border-bottom: 1px solid var(--wf-line-2); }
+.t tbody tr:last-child td { border-bottom: 0; }
+.t th:first-child, .t td:first-child { padding-left: 20px; }
+.t tbody tr { cursor: pointer; }
+.t tbody tr:hover td { background: #FAFAFD; }
+.ttl { font-weight: 600; color: var(--wf-ink); }
+.sub { font-size: 13px; color: var(--wf-mut); }
+.sub.top { margin: -6px 0 14px; }
+.sub.warn { color: var(--wf-amber-ink); }
+.decw { color: var(--wf-amber-ink); font-weight: 600; }
+.num { font-variant-numeric: tabular-nums; }
+.score { display: inline-grid; place-items: center; min-width: 44px; height: 24px; padding: 0 8px; border-radius: 6px; font-size: 12px; font-weight: 700; }
+.s-A { background: var(--wf-ok-tint); color: var(--wf-ok); }
+.s-B { background: var(--wf-primary-tint); color: var(--wf-primary-2); }
+.s-C, .s-D { background: var(--wf-hold-tint); color: var(--wf-hold); }
+.s-X, .s-none { background: #F3F4F6; color: var(--wf-mut); font-weight: 600; }
+.empty { text-align: center; padding: 44px 20px; }
+.empty h3 { margin: 0 0 6px; font-size: 17px; font-weight: 600; }
+.empty p { margin: 0 auto; color: var(--wf-mut); max-width: 48ch; }
+.pills { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+.dtabs { display: flex; gap: 4px; flex-wrap: wrap; margin: 0 0 20px; }
+.dtabs button { border: 0; background: transparent; height: 34px; padding: 0 12px; border-radius: 8px; font: inherit; font-weight: 500; color: var(--wf-mut); cursor: pointer; }
+.dtabs button.on { background: var(--wf-primary-tint); color: var(--wf-primary-2); }
+.note { background: var(--wf-amber-tint); color: var(--wf-amber-ink); border-radius: 10px; padding: 10px 14px; font-size: 13.5px; margin-bottom: 18px; }
+.note.info { background: var(--wf-primary-tint); color: var(--wf-primary-2); }
+.note.lock { background: var(--wf-line-2); color: var(--wf-mut); border: 1px dashed var(--wf-line); }
+.ai { display: flex; gap: 16px; align-items: flex-start; border: 1px solid var(--wf-line); border-radius: 12px; padding: 14px 16px; margin-bottom: 20px; }
+.ring { display: grid; place-items: center; width: 70px; height: 70px; border-radius: 50%; font-size: 20px; font-weight: 700; flex: none; }
+.ring em { display: block; font-style: normal; font-size: 10.5px; font-weight: 500; }
+.ai p { margin: 4px 0 0; }
+.kv { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 20px; margin: 0 0 20px; }
+.kv.small { margin: 10px 0 12px; }
+.kv dt { font-size: 12.5px; color: var(--wf-mut-2); }
+.kv dd { margin: 2px 0 0; font-weight: 500; word-break: break-word; }
+.sec { margin-bottom: 20px; }
+.sec h4 { margin: 0 0 8px; font-size: 13.5px; font-weight: 600; }
+.sec p { margin: 0 0 4px; }
+.pre { white-space: pre-wrap; }
+.fb { margin-top: 6px; font-size: 13px; color: var(--wf-ink-2); }
+.box { border: 1px solid var(--wf-line); border-radius: 12px; padding: 14px 16px; margin-bottom: 10px; }
+.box-top { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+.box-top b { flex: 1; }
+.copyrow { display: flex; gap: 8px; margin-top: 8px; }
+.tl { list-style: none; margin: 0; padding: 0; }
+.tl li { position: relative; padding: 0 0 16px 30px; }
+.tl li::before { content: ""; position: absolute; left: 8px; top: 20px; bottom: -2px; width: 2px; background: var(--wf-line); }
+.tl li:last-child::before { display: none; }
+.tl .dot { position: absolute; left: 0; top: 3px; width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--wf-line); background: #fff; }
+.tl li.done .dot { background: var(--wf-ok-dot); border-color: var(--wf-ok-dot); }
+.tl li.done::before { background: var(--wf-ok-dot); }
+.tl li.now .dot { border-color: var(--wf-amber); box-shadow: 0 0 0 4px var(--wf-amber-tint); }
+.tl li.stop .dot { background: var(--wf-bad); border-color: var(--wf-bad); }
+.tl b { display: block; font-weight: 600; }
+.gt { display: inline-flex; margin-left: 6px; font-style: normal; font-size: 11.5px; font-weight: 600; color: var(--wf-amber-ink); background: var(--wf-amber-tint); padding: 1px 7px; border-radius: 5px; }
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
+.fld { margin-bottom: 16px; }
+.fld label { display: block; font-weight: 500; margin-bottom: 6px; }
+.req { color: var(--wf-bad); }
+.in { box-sizing: border-box; width: 100%; height: 40px; border: 1px solid var(--wf-line); border-radius: 9px; padding: 0 12px; background: #fff; font: inherit; color: var(--wf-ink); }
+.in:focus { outline: none; border-color: var(--wf-primary-2); box-shadow: 0 0 0 3px var(--wf-primary-tint); }
+.ta { height: auto; padding: 10px 12px; line-height: 1.5; resize: vertical; }
+.btn { height: 38px; padding: 0 15px; border-radius: 9px; border: 1px solid var(--wf-line); background: #fff; color: var(--wf-ink-2); font: inherit; font-weight: 500; font-size: 14px; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; }
+.btn:hover { background: var(--wf-line-2); }
+.btn.pri { background: var(--wf-primary); border-color: var(--wf-primary); color: #fff; }
+.btn.pri:hover { background: var(--wf-primary-2); }
+.btn.dan { color: var(--wf-bad); border-color: #F5C2C2; }
+.btn.dan:hover { background: var(--wf-bad-tint); }
+.btn.sm { height: 32px; padding: 0 11px; font-size: 13px; }
+.btn.dash { border-style: dashed; color: var(--wf-primary-2); background: transparent; }
+@media (max-width: 860px) {
+	.hs { display: none; }
+	.kv, .grid { grid-template-columns: 1fr; }
 }
 </style>

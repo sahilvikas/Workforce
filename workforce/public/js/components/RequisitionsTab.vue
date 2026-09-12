@@ -1,685 +1,433 @@
 <template>
-	<div class="requisitions-tab">
+	<div class="rq">
 		<Toast :visible="toast.show" :message="toast.msg" :type="toast.type" @hide="toast.show = false" />
 
-		<div class="tab-header">
-			<h2>{{ headerTitle }}</h2>
-			<button v-if="canCreate" class="btn-primary" @click="openCreateDialog">+ New Requisition</button>
+		<div class="head">
+			<div>
+				<h1>{{ isHR ? 'Requisitions' : 'My requisitions' }}</h1>
+				<p>{{ isHR ? 'Every hiring request and the step it is waiting on.' : 'Ask to hire for your team and see exactly where each request is. ' + routeNote }}</p>
+			</div>
+			<button v-if="canRaise" class="btn pri" type="button" @click="openForm()">Raise requisition</button>
 		</div>
 
-		<!-- KPIs -->
-		<div class="kpi-row">
-			<KpiCard label="Total" :value="kpis.total || 0" />
-			<KpiCard v-if="showDraftKpi" label="Draft" :value="kpis.draft || 0" />
-			<KpiCard label="Pending Approval" :value="kpis.pending_approval || 0" />
-			<KpiCard label="Needs Revision" :value="kpis.needs_revision || 0" />
-			<KpiCard label="Approved" :value="kpis.approved || 0" />
-			<KpiCard label="Published" :value="kpis.published || 0" />
-			<KpiCard v-if="kpis.overdue_pending" label="Overdue (>7d)" :value="kpis.overdue_pending || 0" />
+		<div class="chips">
+			<button v-for="g in groups" :key="g.key" type="button" class="chip" :class="{ on: filter === g.key }" @click="filter = g.key">
+				{{ g.label }} <span class="c">{{ g.count }}</span>
+			</button>
+			<div class="search">
+				<input v-model="q" class="in" placeholder="Search by title, team or requester" />
+			</div>
 		</div>
 
-		<!-- Filters -->
-		<div class="filters-row">
-			<input v-model="searchQuery" type="text" placeholder="Search by title, team, requester..." class="search-input" />
-			<select v-model="statusFilter" class="filter-select">
-				<option value="">All Statuses</option>
-				<option value="Draft">Draft</option>
-				<option value="Pending Approval">Pending Approval</option>
-				<option value="Needs Revision">Needs Revision</option>
-				<option value="Approved">Approved</option>
-				<option value="Published">Published</option>
-				<option value="Rejected">Rejected</option>
-				<option value="Cancelled">Cancelled</option>
-			</select>
-		</div>
-
-		<!-- Table -->
-		<div class="table-wrapper">
-			<table class="wf-table">
+		<section class="panel">
+			<div v-if="loading" class="empty"><p>Loading…</p></div>
+			<div v-else-if="!shown.length" class="empty">
+				<h3>Nothing here</h3>
+				<p>{{ filter === 'open' ? 'When you raise a requisition it shows here until it goes live.' : 'No requisitions in this group.' }}</p>
+			</div>
+			<table v-else class="t">
 				<thead>
 					<tr>
-						<th>ID</th>
-						<th>Position Title</th>
-						<th>Team</th>
-						<th>Openings</th>
-						<th>Level / Type</th>
-						<th>CTC</th>
-						<th>Requester</th>
-						<th v-if="roleView === 'hr_manager'">HR Owner</th>
-						<th>Status</th>
-						<th>Days</th>
+						<th>Position</th>
+						<th v-if="isHR" class="hs">Raised by</th>
+						<th>Where it is</th>
+						<th class="hs">Openings</th>
+						<th class="hs">Raised</th>
 					</tr>
 				</thead>
 				<tbody>
-					<tr v-if="loading"><td :colspan="colSpan" class="center-text">Loading...</td></tr>
-					<tr v-else-if="filteredRequisitions.length === 0">
-						<td :colspan="colSpan" class="center-text">{{ emptyMessage }}</td>
-					</tr>
-					<tr v-for="r in filteredRequisitions" :key="r.name" class="clickable-row" @click="openDetail(r)">
-						<td class="req-id">{{ r.name }}</td>
-						<td class="req-title-cell">
-							{{ r.title }}
-							<span v-if="r.revision_count && r.revision_count > 0" class="rev-badge">v{{ r.revision_count + 1 }}</span>
-						</td>
-						<td>{{ r.team || '—' }}</td>
-						<td>{{ r.number_of_openings || 1 }}</td>
+					<tr v-for="r in shown" :key="r.name" @click="openDetail(r)">
 						<td>
-							<span class="level-chip">{{ r.position_level || '—' }}</span>
-							<span class="type-chip">{{ r.employment_type || '' }}</span>
+							<div class="ttl">{{ r.title }}</div>
+							<div class="sub">{{ r.team || r.name }}</div>
 						</td>
-						<td>{{ r.compensation_range || '—' }}</td>
-						<td>{{ r.requester_full_name || r.requester || '—' }}</td>
-						<td v-if="roleView === 'hr_manager'">{{ r.hr_owner_name || '—' }}</td>
-						<td><Badge :label="r.status" /></td>
+						<td v-if="isHR" class="hs">{{ r.requester_full_name || r.requester }}</td>
 						<td>
-							<span :class="daysClass(r)">{{ r.days_pending }}d</span>
+							<Badge :label="whereLabel(r)" />
+							<span v-if="dayText(r)" class="sub day">{{ dayText(r) }}</span>
 						</td>
+						<td class="hs num">{{ r.number_of_openings }}</td>
+						<td class="hs sub">{{ shortDate(r.creation) }}</td>
 					</tr>
 				</tbody>
 			</table>
-		</div>
+		</section>
 
-		<!-- ==================== CREATE / EDIT DIALOG ==================== -->
-		<Dialog :visible="showDialog" :title="dialogTitle" :submitLabel="dialogSubmitLabel"
-			:loading="saving" size="lg" @close="closeDialog" @submit="saveRequisition">
-
-			<div v-if="editingReq && editingReq.status === 'Needs Revision' && editingReq.leadership_comment" class="revision-note">
-				<div class="revision-header">
-					<span class="revision-icon">⚠️</span>
-					<strong>Leadership requested changes:</strong>
+		<!-- detail -->
+		<DetailPanel :visible="showPanel" :title="sel ? sel.title : ''" @close="closePanel">
+			<template v-if="detail">
+				<div class="pills">
+					<Badge :label="whereLabel(detail.requisition)" />
+					<span class="sub num">{{ detail.requisition.name }}</span>
 				</div>
-				<p class="revision-comment">{{ editingReq.leadership_comment }}</p>
-			</div>
-
-			<div class="form-grid">
-				<div class="form-group full">
-					<label>Position Title *</label>
-					<input v-model="form.title" type="text" class="form-input" placeholder="e.g. Senior Backend Engineer" />
+				<div v-if="detail.requisition.status === 'Needs Revision' && detail.requisition.leadership_comment" class="note">
+					<b>Changes requested.</b> {{ lastComment(detail.requisition.leadership_comment) }}
 				</div>
-
-				<div class="form-group">
-					<label>Team / Department *</label>
-					<select v-model="form.team" class="form-input">
-						<option value="">— Select team —</option>
-						<option v-for="d in departments" :key="d.name" :value="d.name">{{ d.name }}</option>
-					</select>
+				<dl class="kv">
+					<div><dt>Team</dt><dd>{{ detail.requisition.team || '—' }}</dd></div>
+					<div><dt>Level</dt><dd>{{ detail.requisition.position_level || '—' }}</dd></div>
+					<div><dt>Type</dt><dd>{{ detail.requisition.employment_type || '—' }}</dd></div>
+					<div><dt>Openings</dt><dd class="num">{{ detail.requisition.number_of_openings }}</dd></div>
+					<div><dt>CTC range</dt><dd>{{ detail.requisition.compensation_range || '—' }}</dd></div>
+					<div><dt>Reason</dt><dd>{{ detail.requisition.reason || '—' }}</dd></div>
+					<div><dt>Raised by</dt><dd>{{ detail.requisition.requester_name }}</dd></div>
+					<div><dt>Target start</dt><dd>{{ detail.requisition.target_start_date || '—' }}</dd></div>
+				</dl>
+				<div class="sec">
+					<h4>Why this hire</h4>
+					<p :class="{ none: !detail.requisition.business_justification }">{{ detail.requisition.business_justification || 'Not provided' }}</p>
 				</div>
-
-				<div class="form-group">
-					<label>Position Level *</label>
-					<select v-model="form.position_level" class="form-input">
-						<option value="">— Select level —</option>
-						<option value="Intern">Intern</option>
-						<option value="Junior">Junior</option>
-						<option value="Mid">Mid</option>
-						<option value="Senior">Senior</option>
-						<option value="Lead">Lead</option>
-						<option value="Manager">Manager</option>
-					</select>
+				<div class="sec">
+					<h4>Job description</h4>
+					<p class="pre">{{ detail.requisition.description || '—' }}</p>
 				</div>
-
-				<div class="form-group">
-					<label>Employment Type *</label>
-					<select v-model="form.employment_type" class="form-input">
-						<option value="Full-time">Full-time</option>
-						<option value="Part-time">Part-time</option>
-						<option value="Contract">Contract</option>
-						<option value="Internship">Internship</option>
-					</select>
+				<div class="sec" v-if="detail.requisition.required_skills">
+					<h4>Skills</h4>
+					<div class="tags"><span v-for="s in skillList(detail.requisition.required_skills)" :key="s" class="tag">{{ s }}</span></div>
 				</div>
-
-				<div class="form-group">
-					<label>Number of Openings *</label>
-					<input v-model.number="form.number_of_openings" type="number" min="1" class="form-input" />
+				<div class="sec" v-if="detail.job_opening">
+					<h4>Live position</h4>
+					<div class="box">
+						<b>{{ detail.job_opening.job_title }}</b>
+						<Badge :label="detail.job_opening.status" />
+						<div class="sub">{{ detail.candidate_count }} candidate{{ detail.candidate_count === 1 ? '' : 's' }}</div>
+					</div>
 				</div>
-
-				<div class="form-group">
-					<label>Reason for Hiring *</label>
-					<select v-model="form.reason" class="form-input">
-						<option value="">— Select reason —</option>
-						<option value="New position">New position</option>
-						<option value="Replacement">Replacement</option>
-					</select>
+				<div class="sec">
+					<h4>Timeline</h4>
+					<ol class="tl">
+						<li v-for="(e, i) in detail.timeline" :key="i" :class="e.status === 'pending' ? 'now' : 'done'">
+							<span class="dot"></span>
+							<b>{{ e.event }}</b>
+							<span>{{ e.by }}<template v-if="e.at">, {{ shortDate(e.at) }}</template></span>
+							<div v-if="e.comment" class="cm">{{ lastComment(e.comment) }}</div>
+						</li>
+					</ol>
 				</div>
-
-				<div class="form-group">
-					<label>CTC Range</label>
-					<input v-model="form.compensation_range" type="text" class="form-input" placeholder="e.g. Rs 8-12L" />
-				</div>
-
-				<div class="form-group">
-					<label>Target Start Date</label>
-					<input v-model="form.target_start_date" type="date" class="form-input" />
-				</div>
-
-				<div class="form-group full">
-					<label>Job Description *</label>
-					<textarea v-model="form.description" class="form-input form-textarea" rows="4"
-						placeholder="What will they do, what skills needed, what experience..."></textarea>
-				</div>
-
-				<div class="form-group full">
-					<label>Required Skills</label>
-					<input v-model="form.required_skills" type="text" class="form-input"
-						placeholder="Comma-separated e.g. Python, SQL, React" />
-				</div>
-			</div>
-
-			<div class="approval-info">
-				<span class="info-icon">ℹ️</span>
-				<div>
-					After submission, this goes to <strong>Priyesh</strong> for approval,
-					then to <strong>HR Manager</strong> to publish and assign a recruiter.
-				</div>
-			</div>
-
-			<template #footer-extra>
-				<button v-if="!editingReq || editingReq.status === 'Draft' || editingReq.status === 'Needs Revision'"
-					class="btn-secondary" @click="saveAsDraft" :disabled="saving">
-					Save as Draft
-				</button>
 			</template>
-		</Dialog>
+			<div v-else class="empty"><p>Loading…</p></div>
 
-		<!-- ==================== DETAIL PANEL ==================== -->
-		<DetailPanel :visible="showPanel" :title="selectedReq ? selectedReq.title : ''" @close="closePanel">
-			<div v-if="selectedReq && detailData" class="detail-content">
-				<!-- Status + Basic -->
-				<div class="detail-row"><span class="detail-label">Status</span><Badge :label="detailData.requisition.status" /></div>
-				<div class="detail-row"><span class="detail-label">Requisition ID</span><span>{{ detailData.requisition.name }}</span></div>
-				<div class="detail-row"><span class="detail-label">Team</span><span>{{ detailData.requisition.team }}</span></div>
-				<div class="detail-row"><span class="detail-label">Level</span><span>{{ detailData.requisition.position_level }}</span></div>
-				<div class="detail-row"><span class="detail-label">Employment Type</span><span>{{ detailData.requisition.employment_type }}</span></div>
-				<div class="detail-row"><span class="detail-label">Openings</span><span>{{ detailData.requisition.number_of_openings }}</span></div>
-				<div class="detail-row"><span class="detail-label">CTC Range</span><span>{{ detailData.requisition.compensation_range || '—' }}</span></div>
-				<div class="detail-row"><span class="detail-label">Target Start</span><span>{{ formatDate(detailData.requisition.target_start_date) }}</span></div>
-				<div class="detail-row"><span class="detail-label">Requester</span><span>{{ detailData.requisition.requester_name }}</span></div>
-
-				<!-- Description -->
-				<div class="detail-section">
-					<span class="detail-label">Job Description</span>
-					<div class="detail-desc" v-html="detailData.requisition.description"></div>
-				</div>
-
-				<!-- Skills -->
-				<div v-if="detailData.requisition.required_skills" class="detail-section">
-					<span class="detail-label">Required Skills</span>
-					<div class="detail-desc">{{ detailData.requisition.required_skills }}</div>
-				</div>
-
-				<!-- Leadership Comment (if any) -->
-				<div v-if="detailData.requisition.leadership_comment" class="detail-section leadership-comment">
-					<span class="detail-label">
-						Leadership Comment
-						<Badge v-if="detailData.requisition.leadership_decision" :label="detailData.requisition.leadership_decision" />
-					</span>
-					<div class="detail-desc">{{ detailData.requisition.leadership_comment }}</div>
-				</div>
-
-				<!-- Published Job Opening (if linked) -->
-				<div v-if="detailData.job_opening" class="detail-section linked-job">
-					<span class="detail-label">Published as Job Opening</span>
-					<div class="linked-job-card">
-						<div class="linked-job-header">
-							<strong>{{ detailData.job_opening.name }}</strong>
-							<Badge :label="detailData.job_opening.status" />
-						</div>
-						<div class="linked-job-meta">
-							{{ detailData.job_opening.no_of_positions }} openings ·
-							Owner: {{ hrOwnerNameFromEmail(detailData.job_opening.assigned_hr) }} ·
-							Priority: {{ detailData.job_opening.priority || 'Medium' }}
-						</div>
-						<div v-if="detailData.job_opening.status_reason" class="status-reason">
-							Reason: {{ detailData.job_opening.status_reason }}
-						</div>
-						<div class="candidate-count">
-							{{ detailData.candidate_count }} candidate{{ detailData.candidate_count === 1 ? '' : 's' }} applied
-						</div>
-					</div>
-				</div>
-
-				<!-- Timeline -->
-				<div class="detail-section">
-					<span class="detail-label">Approval Timeline</span>
-					<div class="timeline">
-						<div v-for="(t, i) in detailData.timeline" :key="i" class="timeline-item">
-							<div class="timeline-dot"></div>
-							<div class="timeline-content">
-								<div class="timeline-event">{{ t.event }}</div>
-								<div class="timeline-meta">by {{ t.by }} · {{ formatDateTime(t.at) }}</div>
-								<div v-if="t.comment" class="timeline-comment">"{{ t.comment }}"</div>
-							</div>
-						</div>
-					</div>
-				</div>
-			</div>
-
-			<template #actions>
-				<button v-if="detailData && detailData.permissions.can_edit" class="btn-primary" @click="editFromDetail">
-					{{ selectedReq && selectedReq.status === 'Needs Revision' ? 'Edit & Resubmit' : 'Edit' }}
-				</button>
-				<button v-if="detailData && detailData.permissions.can_cancel" class="btn-danger" @click="openCancelDialog">
-					Cancel
+			<template #actions v-if="detail">
+				<button v-if="detail.permissions.can_cancel" class="btn dan" type="button" @click="cancel.show = true">Cancel requisition</button>
+				<button v-if="detail.permissions.can_edit" class="btn pri" type="button" @click="openForm(detail.requisition)">
+					{{ detail.requisition.status === 'Needs Revision' ? 'Edit and resubmit' : 'Edit' }}
 				</button>
 			</template>
 		</DetailPanel>
 
-		<!-- ==================== CANCEL DIALOG ==================== -->
-		<Dialog :visible="showCancelDialog" title="Cancel Requisition" submitLabel="Confirm Cancel"
-			:loading="cancelling" size="sm" @close="showCancelDialog = false" @submit="confirmCancel">
-			<div class="form-group full">
-				<label>Reason for cancellation *</label>
-				<textarea v-model="cancelReason" class="form-input form-textarea" rows="3"
-					placeholder="Why are you cancelling this requisition?"></textarea>
+		<!-- raise / edit -->
+		<Dialog
+			:visible="showForm"
+			:title="editing ? 'Edit requisition' : 'Raise a requisition'"
+			:submit-label="editing && editing.status === 'Needs Revision' ? 'Resubmit' : 'Submit for approval'"
+			:loading="saving" size="lg" @close="showForm = false" @submit="save(true)"
+		>
+			<template #footer-extra>
+				<button class="btn" type="button" :disabled="saving" @click="save(false)">Save as draft</button>
+			</template>
+			<p class="sub top">{{ routeNote }}</p>
+			<div v-if="editing && editing.leadership_comment && editing.status === 'Needs Revision'" class="note">
+				<b>What to change.</b> {{ lastComment(editing.leadership_comment) }}
 			</div>
-			<p class="cancel-warning">
-				This will mark the requisition as Cancelled.
-				{{ selectedReq && selectedReq.status === 'Pending Approval' ? 'Leadership will be notified to remove from queue.' : '' }}
-			</p>
+			<div class="grid">
+				<div class="fld full">
+					<label>Position title <span class="req">*</span></label>
+					<input v-model="form.title" class="in" placeholder="e.g. Junior Shopify Developer" />
+				</div>
+				<div class="fld">
+					<label>Team <span class="req">*</span></label>
+					<select v-model="form.team" class="in">
+						<option value="">Choose</option>
+						<option v-for="d in departments" :key="d.name || d" :value="d.name || d">{{ d.name || d }}</option>
+					</select>
+				</div>
+				<div class="fld">
+					<label>Level <span class="req">*</span></label>
+					<select v-model="form.position_level" class="in">
+						<option value="">Choose</option>
+						<option v-for="l in levels" :key="l">{{ l }}</option>
+					</select>
+				</div>
+				<div class="fld">
+					<label>Employment type <span class="req">*</span></label>
+					<select v-model="form.employment_type" class="in"><option v-for="t in types" :key="t">{{ t }}</option></select>
+				</div>
+				<div class="fld">
+					<label>Openings <span class="req">*</span></label>
+					<input v-model.number="form.number_of_openings" type="number" min="1" class="in num" />
+				</div>
+				<div class="fld">
+					<label>Reason <span class="req">*</span></label>
+					<select v-model="form.reason" class="in">
+						<option value="">Choose</option>
+						<option v-for="r in reasons" :key="r">{{ r }}</option>
+					</select>
+				</div>
+				<div class="fld">
+					<label>CTC range</label>
+					<input v-model="form.compensation_range" class="in" placeholder="e.g. 5-7 LPA" />
+				</div>
+				<div class="fld">
+					<label>Target start</label>
+					<input v-model="form.target_start_date" type="date" class="in" />
+				</div>
+				<div class="fld full">
+					<label>Job description <span class="req">*</span></label>
+					<textarea v-model="form.description" class="in ta" rows="6" placeholder="What the person will do, and what they need to bring"></textarea>
+					<div class="hint">This is what candidates read on the careers page. Please write more than one line.</div>
+				</div>
+				<div class="fld full">
+					<label>Skills</label>
+					<input v-model="form.required_skills" class="in" placeholder="Comma separated, e.g. Selenium, SQL, manual testing" />
+				</div>
+				<div class="fld full">
+					<label>Why this hire</label>
+					<textarea v-model="form.business_justification" class="in ta" rows="3" placeholder="The problem this person solves"></textarea>
+					<div class="hint">Optional, but if you write it, use at least 30 characters.</div>
+				</div>
+			</div>
+		</Dialog>
+
+		<!-- cancel -->
+		<Dialog :visible="cancel.show" title="Cancel this requisition?" submit-label="Cancel requisition" :loading="cancel.busy" @close="cancel.show = false" @submit="doCancel">
+			<p class="sub top">It stops here and leaves every approval queue.</p>
+			<div class="fld">
+				<label>Reason <span class="req">*</span></label>
+				<textarea v-model="cancel.reason" class="in ta" rows="3" placeholder="Why it is no longer needed"></textarea>
+			</div>
 		</Dialog>
 	</div>
 </template>
 
 <script>
 import Badge from './shared/Badge.vue';
-import KpiCard from './shared/KpiCard.vue';
 import Dialog from './shared/Dialog.vue';
 import DetailPanel from './shared/DetailPanel.vue';
 import Toast from './shared/Toast.vue';
+import { shortDate } from './utils/time.js';
+
+const OPEN_STATUSES = ['Draft', 'Pending CMO Approval', 'Pending Approval', 'Needs Revision', 'Approved'];
+const CLOSED_STATUSES = ['Rejected', 'Rejected by CMO', 'Cancelled'];
 
 export default {
 	name: 'RequisitionsTab',
-	components: { Badge, KpiCard, Dialog, DetailPanel, Toast },
-
+	components: { Badge, Dialog, DetailPanel, Toast },
 	data() {
 		return {
-			requisitions: [],
-			kpis: {},
-			roleView: 'none',
-			currentUser: '',
-			departments: [],
-			userMap: {},  // email → full_name
-			loading: false,
-			saving: false,
-			cancelling: false,
-			searchQuery: '',
-			statusFilter: '',
-			showDialog: false,
-			showPanel: false,
-			showCancelDialog: false,
-			editingReq: null,
-			selectedReq: null,
-			detailData: null,
-			form: this.emptyForm(),
-			cancelReason: '',
-			toast: { show: false, msg: '', type: 'success' }
+			roles: [], loading: true, reqs: [], departments: [],
+			filter: 'open', q: '',
+			showPanel: false, sel: null, detail: null,
+			showForm: false, editing: null, saving: false,
+			form: this.blankForm(),
+			cancel: { show: false, reason: '', busy: false },
+			toast: { show: false, msg: '', type: 'success' },
+			levels: ['Intern', 'Junior', 'Mid', 'Senior', 'Lead', 'Manager'],
+			types: ['Full-time', 'Part-time', 'Contract', 'Internship'],
+			reasons: ['New position', 'Replacement', 'Expansion']
 		};
 	},
-
 	computed: {
-		canCreate() {
-			return this.roleView === 'manager' || this.roleView === 'hr_manager';
+		isHR() { return this.roles.includes('WF HR Manager') || this.roles.includes('WF Admin'); },
+		canRaise() { return this.isHR || this.roles.includes('WF Hiring Manager') || this.roles.includes('WF CMO'); },
+		routeNote() {
+			return this.isHR
+				? 'Approved requests come back to you to publish.'
+				: 'Once approved, HR publishes the position and assigns a recruiter.';
 		},
-
-		showDraftKpi() {
-			return this.roleView === 'manager' || this.roleView === 'hr_manager';
+		groups() {
+			const c = list => list.length;
+			return [
+				{ key: 'open', label: 'In progress', count: c(this.reqs.filter(r => OPEN_STATUSES.includes(r.status))) },
+				{ key: 'live', label: 'Live', count: c(this.reqs.filter(r => r.status === 'Published')) },
+				{ key: 'closed', label: 'Closed', count: c(this.reqs.filter(r => CLOSED_STATUSES.includes(r.status))) },
+				{ key: 'all', label: 'All', count: this.reqs.length }
+			];
 		},
-
-		headerTitle() {
-			if (this.roleView === 'manager') return 'My Requisitions';
-			if (this.roleView === 'hr_manager') return 'Job Requisitions';
-			if (this.roleView === 'leadership') return 'Requisitions';
-			return 'Requisitions';
-		},
-
-		emptyMessage() {
-			if (this.roleView === 'manager') return 'No requisitions yet. Click "+ New Requisition" to create one.';
-			if (this.roleView === 'none') return 'You do not have permission to view requisitions.';
-			return 'No requisitions found.';
-		},
-
-		colSpan() {
-			return this.roleView === 'hr_manager' ? 10 : 9;
-		},
-
-		dialogTitle() {
-			if (!this.editingReq) return 'New Requisition';
-			if (this.editingReq.status === 'Needs Revision') return 'Revise Requisition — ' + this.editingReq.name;
-			return 'Edit Requisition — ' + this.editingReq.name;
-		},
-
-		dialogSubmitLabel() {
-			if (!this.editingReq) return 'Submit for Approval';
-			if (this.editingReq.status === 'Needs Revision') return 'Resubmit for Approval';
-			return 'Save & Submit';
-		},
-
-		filteredRequisitions() {
-			const q = this.searchQuery.toLowerCase();
-			return this.requisitions.filter(r => {
-				const matchSearch = !q ||
-					(r.title || '').toLowerCase().includes(q) ||
-					(r.team || '').toLowerCase().includes(q) ||
-					(r.requester_full_name || '').toLowerCase().includes(q) ||
-					(r.name || '').toLowerCase().includes(q);
-				const matchStatus = !this.statusFilter || r.status === this.statusFilter;
-				return matchSearch && matchStatus;
-			});
+		shown() {
+			let list = this.reqs;
+			if (this.filter === 'open') list = list.filter(r => OPEN_STATUSES.includes(r.status));
+			else if (this.filter === 'live') list = list.filter(r => r.status === 'Published');
+			else if (this.filter === 'closed') list = list.filter(r => CLOSED_STATUSES.includes(r.status));
+			const q = this.q.trim().toLowerCase();
+			if (q) list = list.filter(r => [r.title, r.team, r.requester_full_name, r.name].join(' ').toLowerCase().includes(q));
+			return list;
 		}
 	},
-
 	mounted() {
-		this.loadRequisitions();
-		this.loadDepartments();
+		this.roles = (window.frappe && frappe.user_roles) || [];
+		this.load();
+		this.api('wf_get_departments').then(d => { this.departments = d || []; }).catch(() => {});
 	},
-
 	methods: {
-		emptyForm() {
+		blankForm() {
 			return {
-				title: '',
-				team: '',
-				position_level: '',
-				employment_type: 'Full-time',
-				number_of_openings: 1,
-				reason: '',
-				compensation_range: '',
-				target_start_date: '',
-				description: '',
-				required_skills: ''
+				title: '', team: '', position_level: '', employment_type: 'Full-time',
+				number_of_openings: 1, reason: '', compensation_range: '', target_start_date: '',
+				description: '', required_skills: '', business_justification: ''
 			};
 		},
-
-		async api(method, params = {}) {
+		api(method, args = {}) {
 			return new Promise((resolve, reject) => {
-				frappe.call({
-					method: method,
-					args: params,
-					async: true,
-					callback: r => resolve(r.message),
-					error: reject
-				});
+				frappe.call({ method, args, callback: r => resolve(r.message), error: reject });
 			});
 		},
-
-		async loadRequisitions() {
-			this.loading = true;
+		notify(msg, type = 'success') { this.toast = { show: true, msg, type }; },
+		async load() {
 			try {
 				const res = await this.api('wf_get_requisitions');
-				this.requisitions = res.requisitions || [];
-				this.kpis = res.kpis || {};
-				this.roleView = res.role_view || 'none';
-				this.currentUser = res.user || '';
-			} catch (e) {
-				this.showToast('Failed to load requisitions', 'error');
-			}
+				this.reqs = (res && res.requisitions) || [];
+			} catch (e) { this.notify('Could not load requisitions.', 'error'); }
 			this.loading = false;
 		},
-
-		async loadDepartments() {
-			try {
-				const r = await this.api('wf_get_departments');
-				this.departments = (r || []).map(d => ({ name: d.name || d }));
-			} catch (e) { this.departments = []; }
+		shortDate(d) { return shortDate(d); },
+		whereLabel(r) {
+			return {
+				'Pending CMO Approval': 'Pending CMO Approval',
+				'Pending Approval': 'Pending Approval',
+				'Needs Revision': 'Needs Revision',
+				'Approved': 'Approved',
+				'Published': 'Published'
+			}[r.status] || r.status;
 		},
-
-		hrOwnerNameFromEmail(email) {
-			if (!email) return '—';
-			// Try to find in current requisitions
-			const r = this.requisitions.find(x => x.hr_owner === email);
-			if (r && r.hr_owner_name) return r.hr_owner_name;
-			return email.split('@')[0];
+		dayText(r) {
+			if (!['Pending Approval', 'Pending CMO Approval'].includes(r.status)) return '';
+			return 'day ' + (r.days_pending || 0) + ' of 7';
 		},
-
-		daysClass(r) {
-			if (r.status !== 'Pending Approval') return 'days-normal';
-			if (r.days_pending > 7) return 'days-overdue';
-			if (r.days_pending > 4) return 'days-warning';
-			return 'days-normal';
+		// the comment field keeps a trail separated by ---; show the newest
+		lastComment(text) {
+			const parts = String(text || '').split('\n---\n');
+			return parts[parts.length - 1].trim();
 		},
-
-		openCreateDialog() {
-			this.editingReq = null;
-			this.form = this.emptyForm();
-			this.showDialog = true;
-		},
-
-		openEditDialog(req) {
-			this.editingReq = req;
-			this.form = {
-				title: req.title || '',
-				team: req.team || '',
-				position_level: req.position_level || '',
-				employment_type: req.employment_type || 'Full-time',
-				number_of_openings: req.number_of_openings || 1,
-				reason: req.reason || '',
-				compensation_range: req.compensation_range || '',
-				target_start_date: req.target_start_date || '',
-				description: req.description || '',
-				required_skills: req.required_skills || ''
-			};
-			this.showPanel = false;
-			this.showDialog = true;
-		},
-
-		editFromDetail() {
-			if (!this.detailData) return;
-			const req = this.detailData.requisition;
-			this.openEditDialog(req);
-		},
-
-		closeDialog() {
-			this.showDialog = false;
-			this.editingReq = null;
-			this.form = this.emptyForm();
-		},
-
-		validateForm() {
-			if (!this.form.title.trim()) { this.showToast('Position title is required', 'error'); return false; }
-			if (!this.form.team) { this.showToast('Team is required', 'error'); return false; }
-			if (!this.form.position_level) { this.showToast('Position level is required', 'error'); return false; }
-			if (!this.form.reason) { this.showToast('Reason for hiring is required', 'error'); return false; }
-			if (!this.form.number_of_openings || this.form.number_of_openings < 1) {
-				this.showToast('Number of openings must be at least 1', 'error'); return false;
-			}
-			if (!this.form.description.trim()) { this.showToast('Job description is required', 'error'); return false; }
-			return true;
-		},
-
-		async saveRequisition() {
-			if (!this.validateForm()) return;
-			await this.doSave(true);
-		},
-
-		async saveAsDraft() {
-			if (!this.form.title.trim()) { this.showToast('At least the title is required to save as draft', 'error'); return; }
-			await this.doSave(false);
-		},
-
-		async doSave(submitForApproval) {
-			this.saving = true;
-			try {
-				const payload = { ...this.form, submit_for_approval: submitForApproval };
-
-				if (this.editingReq) {
-					// Edit existing
-					payload.requisition = this.editingReq.name;
-					const res = await this.api('wf_hiring_manager_edit_requisition', { data: payload });
-					this.showToast(res.message || 'Requisition updated');
-				} else {
-					// Create new
-					const res = await this.api('wf_create_requisition', { data: payload });
-					this.showToast(res.message || 'Requisition created');
-				}
-
-				this.closeDialog();
-				await this.loadRequisitions();
-			} catch (e) {
-				this.showToast('Failed to save: ' + (e.message || 'Please try again'), 'error');
-			}
-			this.saving = false;
-		},
+		skillList(s) { return String(s || '').split(',').map(x => x.trim()).filter(Boolean); },
 
 		async openDetail(req) {
-			this.selectedReq = req;
-			this.detailData = null;
-			this.showPanel = true;
-			try {
-				const res = await this.api('wf_get_requisition_detail', { requisition: req.name });
-				this.detailData = res;
-			} catch (e) {
-				this.showToast('Failed to load requisition details', 'error');
-				this.showPanel = false;
-			}
+			this.sel = req; this.detail = null; this.showPanel = true;
+			try { this.detail = await this.api('wf_get_requisition_detail', { requisition: req.name }); }
+			catch (e) { this.notify('Could not open this requisition.', 'error'); this.showPanel = false; }
 		},
+		closePanel() { this.showPanel = false; this.sel = null; this.detail = null; },
 
-		closePanel() {
+		openForm(req) {
+			this.editing = req || null;
+			this.form = req ? {
+				title: req.title || '', team: req.team || '', position_level: req.position_level || '',
+				employment_type: req.employment_type || 'Full-time', number_of_openings: req.number_of_openings || 1,
+				reason: req.reason || '', compensation_range: req.compensation_range || '',
+				target_start_date: req.target_start_date || '', description: req.description || '',
+				required_skills: req.required_skills || '', business_justification: req.business_justification || ''
+			} : this.blankForm();
 			this.showPanel = false;
-			this.selectedReq = null;
-			this.detailData = null;
+			this.showForm = true;
 		},
-
-		openCancelDialog() {
-			this.cancelReason = '';
-			this.showCancelDialog = true;
-		},
-
-		async confirmCancel() {
-			if (!this.cancelReason.trim()) {
-				this.showToast('Please provide a reason', 'error');
-				return;
+		async save(submit) {
+			if (!this.form.title.trim()) { this.notify('A position title is needed.', 'error'); return; }
+			if (submit) {
+				for (const f of [['team', 'team'], ['position_level', 'level'], ['reason', 'reason'], ['description', 'job description']]) {
+					if (!String(this.form[f[0]] || '').trim()) { this.notify('Please fill the ' + f[1] + '.', 'error'); return; }
+				}
 			}
-			this.cancelling = true;
+			const bj = String(this.form.business_justification || '').trim();
+			if (bj && bj.length < 30) { this.notify('“Why this hire” needs at least 30 characters, or leave it empty.', 'error'); return; }
+			this.saving = true;
 			try {
-				await this.api('wf_manager_action', {
-					data: {
-						requisition: this.selectedReq.name,
-						action: 'cancel',
-						reason: this.cancelReason.trim()
-					}
-				});
-				this.showToast('Requisition cancelled');
-				this.showCancelDialog = false;
-				this.showPanel = false;
-				await this.loadRequisitions();
-			} catch (e) {
-				this.showToast('Failed to cancel', 'error');
-			}
-			this.cancelling = false;
+				const payload = Object.assign({}, this.form, { submit_for_approval: submit });
+				let res;
+				if (this.editing) {
+					payload.requisition = this.editing.name;
+					res = await this.api('wf_hiring_manager_edit_requisition', { data: payload });
+				} else {
+					res = await this.api('wf_create_requisition', { data: payload });
+				}
+				this.notify((res && res.message) || 'Saved.');
+				this.showForm = false;
+				this.editing = null;
+				await this.load();
+			} catch (e) { /* frappe shows the reason */ }
+			this.saving = false;
 		},
-
-		formatDate(d) {
-			if (!d) return '—';
-			return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-		},
-
-		formatDateTime(d) {
-			if (!d) return '—';
-			const date = new Date(d);
-			return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) +
-				' at ' + date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-		},
-
-		showToast(msg, type = 'success') {
-			this.toast = { show: true, msg, type };
+		async doCancel() {
+			if (!this.cancel.reason.trim()) { this.notify('Please give a reason.', 'error'); return; }
+			this.cancel.busy = true;
+			try {
+				await this.api('wf_manager_action', { data: { requisition: this.detail.requisition.name, action: 'cancel', reason: this.cancel.reason.trim() } });
+				this.notify('Requisition cancelled.');
+				this.cancel = { show: false, reason: '', busy: false };
+				this.closePanel();
+				await this.load();
+			} catch (e) { this.cancel.busy = false; }
 		}
 	}
 };
 </script>
 
 <style scoped>
-.requisitions-tab { padding-bottom: 40px; }
-
-.tab-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-.tab-header h2 { margin: 0; font-size: 20px; font-weight: 600; }
-
-.btn-primary { background: #4f46e5; color: #fff; border: none; padding: 10px 20px; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 14px; }
-.btn-primary:hover { background: #4338ca; }
-.btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
-.btn-secondary { background: #fff; color: #374151; border: 1px solid #d1d5db; padding: 10px 20px; border-radius: 8px; font-weight: 500; cursor: pointer; font-size: 14px; }
-.btn-secondary:hover { background: #f9fafb; }
-.btn-danger { background: #ef4444; color: #fff; border: none; padding: 10px 20px; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 14px; }
-.btn-danger:hover { background: #dc2626; }
-
-.kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 20px; }
-
-.filters-row { display: flex; gap: 12px; margin-bottom: 20px; }
-.search-input { flex: 1; padding: 10px 14px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; outline: none; min-width: 0; }
-.search-input:focus { border-color: #4f46e5; box-shadow: 0 0 0 3px rgba(79,70,229,0.1); }
-.filter-select { padding: 10px 14px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; outline: none; background: #fff; min-width: 160px; }
-
-.table-wrapper { background: #fff; border-radius: 10px; border: 1px solid #e5e7eb; overflow-x: auto; }
-.wf-table { width: 100%; border-collapse: collapse; min-width: 900px; }
-.wf-table th { text-align: left; padding: 12px 16px; font-size: 12px; font-weight: 600; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; white-space: nowrap; }
-.wf-table td { padding: 14px 16px; font-size: 14px; border-bottom: 1px solid #f3f4f6; }
-.clickable-row { cursor: pointer; }
-.clickable-row:hover { background: #f9fafb; }
-.center-text { text-align: center; color: #9ca3af; padding: 40px 16px !important; }
-
-.req-id { font-family: monospace; font-size: 12px; color: #6b7280; }
-.req-title-cell { font-weight: 600; color: #111827; }
-.rev-badge { display: inline-block; padding: 2px 6px; margin-left: 6px; background: #fef3c7; color: #92400e; border-radius: 8px; font-size: 10px; font-weight: 700; }
-
-.level-chip { display: inline-block; padding: 2px 8px; background: #eef2ff; color: #4338ca; border-radius: 8px; font-size: 11px; font-weight: 600; margin-right: 4px; }
-.type-chip { display: inline-block; font-size: 11px; color: #6b7280; }
-
-.days-normal { color: #6b7280; font-size: 13px; }
-.days-warning { color: #f59e0b; font-weight: 600; font-size: 13px; }
-.days-overdue { color: #ef4444; font-weight: 700; font-size: 13px; }
-
-.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-.form-group { display: flex; flex-direction: column; gap: 6px; }
-.form-group.full { grid-column: 1 / -1; }
-.form-group label { font-size: 13px; font-weight: 600; color: #374151; display: flex; justify-content: space-between; align-items: center; }
-.form-group label .hint { font-weight: 400; color: #9ca3af; font-size: 11px; }
-.form-input { padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; outline: none; width: 100%; box-sizing: border-box; }
-.form-input:focus { border-color: #4f46e5; box-shadow: 0 0 0 3px rgba(79,70,229,0.1); }
-.form-textarea { resize: vertical; font-family: inherit; }
-
-.revision-note { background: #fffbeb; border: 1px solid #f59e0b; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; }
-.revision-header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; color: #92400e; }
-.revision-icon { font-size: 18px; }
-.revision-comment { margin: 0; color: #78350f; font-size: 13px; line-height: 1.5; }
-
-.approval-info { display: flex; gap: 10px; align-items: flex-start; background: #eff6ff; border-left: 3px solid #3b82f6; padding: 12px 16px; margin-top: 16px; border-radius: 6px; font-size: 13px; color: #1e40af; }
-.info-icon { font-size: 16px; }
-
-/* Detail Panel styles */
-.detail-content { display: flex; flex-direction: column; gap: 12px; }
-.detail-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #f3f4f6; }
-.detail-label { font-size: 13px; font-weight: 600; color: #6b7280; }
-.detail-section { padding: 12px 0; }
-.detail-desc { margin-top: 8px; font-size: 14px; color: #374151; line-height: 1.6; }
-
-.leadership-comment { background: #fffbeb; padding: 12px; border-radius: 8px; border-left: 3px solid #f59e0b; }
-.leadership-comment .detail-label { display: flex; gap: 8px; align-items: center; }
-
-.linked-job-card { background: #f0fdf4; border: 1px solid #86efac; border-radius: 8px; padding: 12px; margin-top: 8px; }
-.linked-job-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
-.linked-job-meta { font-size: 13px; color: #4b5563; margin-bottom: 6px; }
-.status-reason { font-size: 12px; color: #92400e; background: #fef3c7; padding: 4px 8px; border-radius: 4px; margin-top: 4px; }
-.candidate-count { font-size: 13px; color: #166534; font-weight: 600; margin-top: 8px; }
-
-/* Timeline */
-.timeline { margin-top: 12px; position: relative; padding-left: 24px; }
-.timeline::before { content: ''; position: absolute; left: 8px; top: 6px; bottom: 6px; width: 2px; background: #e5e7eb; }
-.timeline-item { position: relative; padding-bottom: 16px; }
-.timeline-item:last-child { padding-bottom: 0; }
-.timeline-dot { position: absolute; left: -20px; top: 4px; width: 12px; height: 12px; border-radius: 50%; background: #4f46e5; border: 2px solid #fff; box-shadow: 0 0 0 2px #4f46e5; }
-.timeline-content { padding-left: 4px; }
-.timeline-event { font-weight: 600; font-size: 13px; color: #111827; }
-.timeline-meta { font-size: 12px; color: #6b7280; margin-top: 2px; }
-.timeline-comment { margin-top: 4px; font-size: 12px; color: #78350f; background: #fef3c7; padding: 6px 10px; border-radius: 4px; font-style: italic; }
-
-.cancel-warning { margin-top: 12px; padding: 10px; background: #fef2f2; border-left: 3px solid #ef4444; color: #991b1b; font-size: 13px; border-radius: 4px; }
-
-@media (max-width: 1024px) {
-	.kpi-row { grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); }
-	.wf-table { min-width: 700px; }
-}
-@media (max-width: 768px) {
-	.filters-row { flex-direction: column; gap: 8px; }
-	.filter-select { width: 100%; min-width: auto; }
-	.form-grid { grid-template-columns: 1fr; }
-	.form-group.full { grid-column: 1; }
+.head { display: flex; align-items: flex-end; gap: 16px; flex-wrap: wrap; margin-bottom: 20px; }
+.head h1 { margin: 0; font-size: 26px; font-weight: 600; letter-spacing: -.02em; color: var(--wf-ink); }
+.head p { margin: 5px 0 0; color: var(--wf-mut); max-width: 72ch; }
+.head .btn { margin-left: auto; }
+.chips { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; }
+.chip { height: 34px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--wf-line); background: #fff; color: var(--wf-mut); font: inherit; font-size: 13.5px; font-weight: 500; cursor: pointer; }
+.chip .c { opacity: .7; margin-left: 3px; }
+.chip.on { background: var(--wf-primary); border-color: var(--wf-primary); color: #fff; }
+.search { flex: 1; min-width: 220px; }
+.panel { background: #fff; border: 1px solid var(--wf-line); border-radius: 14px; overflow: hidden; }
+.t { width: 100%; border-collapse: collapse; }
+.t th { text-align: left; font-size: 12.5px; font-weight: 500; color: var(--wf-mut-2); padding: 14px 16px 10px; border-bottom: 1px solid var(--wf-line); }
+.t td { padding: 14px 16px; border-bottom: 1px solid var(--wf-line-2); vertical-align: middle; }
+.t tbody tr:last-child td { border-bottom: 0; }
+.t th:first-child, .t td:first-child { padding-left: 20px; }
+.t tbody tr { cursor: pointer; }
+.t tbody tr:hover td { background: #FAFAFD; }
+.ttl { font-weight: 600; color: var(--wf-ink); }
+.sub { font-size: 13px; color: var(--wf-mut); }
+.sub.day { margin-left: 8px; }
+.sub.top { margin: -6px 0 14px; }
+.num { font-variant-numeric: tabular-nums; }
+.empty { text-align: center; padding: 48px 20px; }
+.empty h3 { margin: 0 0 6px; font-size: 17px; font-weight: 600; }
+.empty p { margin: 0; color: var(--wf-mut); }
+.btn { height: 38px; padding: 0 15px; border-radius: 9px; border: 1px solid var(--wf-line); background: #fff; color: var(--wf-ink-2); font: inherit; font-weight: 500; font-size: 14px; cursor: pointer; }
+.btn:hover { background: var(--wf-line-2); }
+.btn.pri { background: var(--wf-primary); border-color: var(--wf-primary); color: #fff; }
+.btn.pri:hover { background: var(--wf-primary-2); }
+.btn.dan { color: var(--wf-bad); border-color: #F5C2C2; }
+.btn.dan:hover { background: var(--wf-bad-tint); }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.pills { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+.kv { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 20px; margin: 0 0 20px; }
+.kv dt { font-size: 12.5px; color: var(--wf-mut-2); }
+.kv dd { margin: 2px 0 0; font-weight: 500; }
+.sec { margin-bottom: 20px; }
+.sec h4 { margin: 0 0 8px; font-size: 13.5px; font-weight: 600; }
+.sec p { margin: 0; }
+.sec p.none { color: var(--wf-mut-2); font-style: italic; }
+.pre { white-space: pre-wrap; }
+.box { border: 1px solid var(--wf-line); border-radius: 12px; padding: 12px 14px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.tag { height: 26px; padding: 0 10px; border-radius: 7px; background: var(--wf-primary-tint); color: var(--wf-primary-2); display: inline-flex; align-items: center; font-size: 12.5px; font-weight: 500; }
+.note { background: var(--wf-amber-tint); color: var(--wf-amber-ink); border-radius: 10px; padding: 10px 14px; font-size: 13.5px; margin-bottom: 16px; }
+.tl { list-style: none; margin: 0; padding: 0; }
+.tl li { position: relative; padding: 0 0 18px 30px; }
+.tl li::before { content: ""; position: absolute; left: 8px; top: 20px; bottom: -2px; width: 2px; background: var(--wf-line); }
+.tl li:last-child::before { display: none; }
+.tl .dot { position: absolute; left: 0; top: 3px; width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--wf-line); background: #fff; }
+.tl li.done .dot { background: var(--wf-ok-dot); border-color: var(--wf-ok-dot); }
+.tl li.done::before { background: var(--wf-ok-dot); }
+.tl li.now .dot { border-color: var(--wf-amber); box-shadow: 0 0 0 4px var(--wf-amber-tint); }
+.tl b { display: block; font-weight: 600; }
+.tl span { display: block; font-size: 13px; color: var(--wf-mut); }
+.tl .cm { margin-top: 6px; padding: 8px 10px; border-radius: 8px; background: var(--wf-line-2); font-size: 13px; color: var(--wf-ink); }
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
+.fld { margin-bottom: 16px; }
+.fld.full { grid-column: 1 / -1; }
+.fld label { display: block; font-weight: 500; margin-bottom: 6px; }
+.req { color: var(--wf-bad); }
+.hint { font-size: 12.5px; color: var(--wf-mut); margin-top: 6px; }
+.in { box-sizing: border-box; width: 100%; height: 40px; border: 1px solid var(--wf-line); border-radius: 9px; padding: 0 12px; background: #fff; font: inherit; color: var(--wf-ink); }
+.in:focus { outline: none; border-color: var(--wf-primary-2); box-shadow: 0 0 0 3px var(--wf-primary-tint); }
+.ta { height: auto; padding: 10px 12px; line-height: 1.5; resize: vertical; }
+@media (max-width: 860px) {
+	.hs { display: none; }
+	.kv, .grid { grid-template-columns: 1fr; }
 }
 </style>

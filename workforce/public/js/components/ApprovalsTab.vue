@@ -1,256 +1,110 @@
 <template>
-	<div class="approvals-tab">
+	<div class="ap">
 		<Toast :visible="toast.show" :message="toast.msg" :type="toast.type" @hide="toast.show = false" />
 
-		<div class="tab-header">
+		<div class="head">
 			<div>
-				<h2>Approval Queue</h2>
-				<p class="tab-subtitle">Requisitions awaiting your review</p>
+				<h1>{{ title }}</h1>
+				<p>{{ subtitle }}</p>
 			</div>
 		</div>
 
-		<!-- Empty state -->
-		<div v-if="!loading && pendingRequisitions.length === 0 && historyRequisitions.length === 0" class="empty-state">
-			<div class="empty-icon">✓</div>
-			<h3>All caught up</h3>
-			<p>No requisitions are waiting for your review right now.</p>
-		</div>
+		<div v-if="loading" class="empty panel"><p>Loading…</p></div>
 
-		<!-- Pending section -->
-		<div v-if="pendingRequisitions.length > 0" class="section">
-			<div class="section-header">
-				<h3>
-					<span class="section-icon pending-icon">⏳</span>
-					Awaiting your review
-				</h3>
-				<span class="section-count">{{ pendingRequisitions.length }}</span>
+		<template v-else>
+			<div v-if="!queue.length" class="panel empty">
+				<h3>{{ canDecide ? 'All caught up' : 'Nothing waiting' }}</h3>
+				<p>{{ emptyNote }}</p>
 			</div>
 
-			<div class="requisition-cards">
-				<div v-for="r in pendingRequisitions" :key="r.name" class="req-card" :class="{ overdue: r.days_pending > 7 }">
-					<div class="req-card-header">
-						<div>
-							<div class="req-title">
-								{{ r.title }}
-								<span v-if="r.revision_count && r.revision_count > 0" class="rev-badge">Revision v{{ r.revision_count + 1 }}</span>
-							</div>
-							<div class="req-meta">
-								<span class="meta-item"><strong>{{ r.team }}</strong></span>
-								<span class="meta-item">{{ r.position_level }}</span>
-								<span class="meta-item">{{ r.employment_type }}</span>
-								<span class="meta-item">{{ r.number_of_openings }} opening{{ r.number_of_openings > 1 ? 's' : '' }}</span>
-								<span v-if="r.compensation_range" class="meta-item">{{ r.compensation_range }}</span>
-							</div>
-							<div class="req-sub">
-								Requested by <strong>{{ r.requester_full_name || r.requester }}</strong> ·
-								<span :class="daysClass(r)">{{ r.days_pending }} day{{ r.days_pending === 1 ? '' : 's' }} pending</span>
-								<span v-if="r.days_pending > 7" class="overdue-badge">Overdue</span>
-							</div>
-						</div>
-						<button class="btn-view-details" @click="openDetail(r)">View full details →</button>
-					</div>
-
-					<div class="req-card-body">
-						<div class="body-section">
-							<div class="body-label">Description</div>
-							<div class="body-text">{{ shortDesc(r.description) }}</div>
-						</div>
-					</div>
-
-					<div class="req-card-actions">
-						<button class="btn-approve" @click="openApproveDialog(r)">
-							<span class="btn-icon">✓</span> Approve
-						</button>
-						<button class="btn-request-changes" @click="openRequestChangesDialog(r)">
-							<span class="btn-icon">↻</span> Request Changes
-						</button>
-						<button class="btn-reject" @click="openRejectDialog(r)">
-							<span class="btn-icon">✗</span> Reject
-						</button>
+			<article v-for="r in queue" :key="r.name" class="card">
+				<div class="kind">{{ canDecide ? 'Your decision' : 'Waiting on ' + waitingOn }}{{ isCmo && canDecide ? ' (first stage, then leadership)' : '' }}</div>
+				<h3>{{ r.title }}</h3>
+				<div class="ctx">Raised by {{ r.requester_full_name || r.requester }} on {{ shortDate(r.creation) }}</div>
+				<div class="facts">
+					<span v-if="r.team" class="fact">Team <b>{{ r.team }}</b></span>
+					<span v-if="r.number_of_openings" class="fact">Openings <b>{{ r.number_of_openings }}</b></span>
+					<span v-if="r.position_level" class="fact">Level <b>{{ r.position_level }}</b></span>
+					<span v-if="r.employment_type" class="fact">Type <b>{{ r.employment_type }}</b></span>
+					<span v-if="r.compensation_range" class="fact">CTC <b>{{ r.compensation_range }}</b></span>
+				</div>
+				<div class="foot">
+					<span class="sla">
+						<span class="bar"><i :class="{ late: (r.days_pending || 0) > 7 }" :style="{ width: Math.min(100, ((r.days_pending || 0) / 7) * 100) + '%' }"></i></span>
+						<span class="sub num">Day {{ r.days_pending || 0 }} of 7</span>
+					</span>
+					<div class="foot-r">
+						<button class="btn sm" type="button" @click="openDetail(r)">Full details</button>
+						<template v-if="canDecide">
+							<button class="btn sm dan" type="button" @click="ask(r, 'Rejected')">Reject</button>
+							<button class="btn sm" type="button" @click="ask(r, 'Request Changes')">Request changes</button>
+							<button class="btn sm pri" type="button" @click="ask(r, 'Approved')">{{ isCmo ? 'Approve and send on' : 'Approve' }}</button>
+						</template>
 					</div>
 				</div>
-			</div>
-		</div>
+			</article>
 
-		<!-- History section -->
-		<div v-if="historyRequisitions.length > 0" class="section">
-			<div class="section-header">
-				<h3>
-					<span class="section-icon history-icon">📋</span>
-					Recent decisions
-				</h3>
-				<span class="section-count">{{ historyRequisitions.length }}</span>
-			</div>
-
-			<div class="table-wrapper">
-				<table class="wf-table">
-					<thead>
-						<tr>
-							<th>Position</th>
-							<th>Team</th>
-							<th>Requester</th>
-							<th>Your Decision</th>
-							<th>Decided On</th>
-							<th>Current Status</th>
-						</tr>
-					</thead>
+			<section v-if="decided.length" class="panel">
+				<div class="p-head"><h2>Decided</h2><span class="sub">{{ decided.length }}</span></div>
+				<table class="t">
 					<tbody>
-						<tr v-for="r in historyRequisitions" :key="r.name" class="clickable-row" @click="openDetail(r)">
-							<td class="req-title-cell">{{ r.title }}</td>
-							<td>{{ r.team }}</td>
-							<td>{{ r.requester_full_name || r.requester }}</td>
-							<td><Badge :label="r.leadership_decision || '—'" /></td>
-							<td>{{ formatDate(r.leadership_decision_on) }}</td>
+						<tr v-for="r in decided" :key="r.name" @click="openDetail(r)">
+							<td>
+								<div class="ttl">{{ r.title }}</div>
+								<div class="sub">{{ r.requester_full_name || r.requester }}<template v-if="r.team">, {{ r.team }}</template></div>
+							</td>
 							<td><Badge :label="r.status" /></td>
+							<td class="hs sub">{{ shortDate(r.leadership_decision_on || r.modified || r.creation) }}</td>
 						</tr>
 					</tbody>
 				</table>
-			</div>
-		</div>
+			</section>
+		</template>
 
-		<!-- Loading state -->
-		<div v-if="loading" class="loading-state">Loading...</div>
-
-		<!-- ==================== DETAIL PANEL ==================== -->
-		<DetailPanel :visible="showPanel" :title="selectedReq ? selectedReq.title : ''" size="lg" @close="closePanel">
-			<div v-if="detailData" class="detail-content">
-				<!-- Header info -->
-				<div class="detail-header-info">
-					<Badge :label="detailData.requisition.status" />
-					<span class="detail-id">{{ detailData.requisition.name }}</span>
+		<DetailPanel :visible="showPanel" :title="sel ? sel.title : ''" @close="showPanel = false">
+			<template v-if="detail">
+				<div class="pills"><Badge :label="detail.requisition.status" /><span class="sub num">{{ detail.requisition.name }}</span></div>
+				<dl class="kv">
+					<div><dt>Team</dt><dd>{{ detail.requisition.team || '—' }}</dd></div>
+					<div><dt>Level</dt><dd>{{ detail.requisition.position_level || '—' }}</dd></div>
+					<div><dt>Type</dt><dd>{{ detail.requisition.employment_type || '—' }}</dd></div>
+					<div><dt>Openings</dt><dd class="num">{{ detail.requisition.number_of_openings }}</dd></div>
+					<div><dt>CTC range</dt><dd>{{ detail.requisition.compensation_range || '—' }}</dd></div>
+					<div><dt>Reason</dt><dd>{{ detail.requisition.reason || '—' }}</dd></div>
+					<div><dt>Raised by</dt><dd>{{ detail.requisition.requester_name }}</dd></div>
+					<div><dt>Target start</dt><dd>{{ detail.requisition.target_start_date || '—' }}</dd></div>
+				</dl>
+				<div class="sec"><h4>Why this hire</h4><p :class="{ none: !detail.requisition.business_justification }">{{ detail.requisition.business_justification || 'Not provided' }}</p></div>
+				<div class="sec"><h4>Job description</h4><p class="pre">{{ detail.requisition.description || '—' }}</p></div>
+				<div class="sec" v-if="detail.requisition.required_skills">
+					<h4>Skills</h4>
+					<div class="tags"><span v-for="s in skillList(detail.requisition.required_skills)" :key="s" class="tag">{{ s }}</span></div>
 				</div>
-
-				<!-- Key facts -->
-				<div class="detail-facts-grid">
-					<div class="fact-item">
-						<div class="fact-label">Team</div>
-						<div class="fact-value">{{ detailData.requisition.team }}</div>
-					</div>
-					<div class="fact-item">
-						<div class="fact-label">Level</div>
-						<div class="fact-value">{{ detailData.requisition.position_level }}</div>
-					</div>
-					<div class="fact-item">
-						<div class="fact-label">Type</div>
-						<div class="fact-value">{{ detailData.requisition.employment_type }}</div>
-					</div>
-					<div class="fact-item">
-						<div class="fact-label">Openings</div>
-						<div class="fact-value">{{ detailData.requisition.number_of_openings }}</div>
-					</div>
-					<div class="fact-item">
-						<div class="fact-label">CTC Range</div>
-						<div class="fact-value">{{ detailData.requisition.compensation_range || '—' }}</div>
-					</div>
-					<div class="fact-item">
-						<div class="fact-label">Target Start</div>
-						<div class="fact-value">{{ formatDate(detailData.requisition.target_start_date) }}</div>
-					</div>
-					<div class="fact-item">
-						<div class="fact-label">Reason</div>
-						<div class="fact-value">{{ detailData.requisition.reason }}</div>
-					</div>
-					<div class="fact-item">
-						<div class="fact-label">Requester</div>
-						<div class="fact-value">{{ detailData.requisition.requester_name }}</div>
-					</div>
-					<div class="fact-item" v-if="detailData.requisition.approving_manager_name">
-						<div class="fact-label">First Approver</div>
-						<div class="fact-value">{{ detailData.requisition.approving_manager_name }}</div>
-					</div>
+				<div class="sec">
+					<h4>Timeline</h4>
+					<ol class="tl">
+						<li v-for="(e, i) in detail.timeline" :key="i" :class="e.status === 'pending' ? 'now' : 'done'">
+							<span class="dot"></span><b>{{ e.event }}</b>
+							<span>{{ e.by }}<template v-if="e.at">, {{ shortDate(e.at) }}</template></span>
+							<div v-if="e.comment" class="cm">{{ lastComment(e.comment) }}</div>
+						</li>
+					</ol>
 				</div>
-
-				<!-- Description -->
-				<div class="detail-section highlight-section">
-					<div class="section-title">Job Description</div>
-					<div class="section-body" v-html="detailData.requisition.description"></div>
-				</div>
-
-				<!-- Required skills -->
-				<div v-if="detailData.requisition.required_skills" class="detail-section">
-					<div class="section-title">Required Skills</div>
-					<div class="section-body">{{ detailData.requisition.required_skills }}</div>
-				</div>
-
-				<!-- Previous comment (if revision) -->
-				<div v-if="detailData.requisition.revision_count > 0 && detailData.requisition.leadership_comment" class="detail-section revision-history">
-					<div class="section-title">
-						Previous comment (before revision)
-					</div>
-					<div class="section-body">{{ detailData.requisition.leadership_comment }}</div>
-				</div>
-
-				<!-- Timeline -->
-				<div class="detail-section">
-					<div class="section-title">Timeline</div>
-					<div class="timeline">
-						<div v-for="(t, i) in detailData.timeline" :key="i" class="timeline-item">
-							<div class="timeline-dot"></div>
-							<div class="timeline-content">
-								<div class="timeline-event">{{ t.event }}</div>
-								<div class="timeline-meta">by {{ t.by }} · {{ formatDateTime(t.at) }}</div>
-								<div v-if="t.comment" class="timeline-comment">"{{ t.comment }}"</div>
-							</div>
-						</div>
-					</div>
-				</div>
-			</div>
-
-			<template #actions>
-				<template v-if="detailData && canDecideOn(detailData.permissions)">
-					<button class="btn-reject" @click="openRejectDialog(detailData.requisition)">Reject</button>
-					<button class="btn-request-changes" @click="openRequestChangesDialog(detailData.requisition)">Request Changes</button>
-					<button class="btn-approve" @click="openApproveDialog(detailData.requisition)">Approve</button>
-				</template>
+			</template>
+			<div v-else class="empty"><p>Loading…</p></div>
+			<template #actions v-if="detail && canDecideOn(detail)">
+				<button class="btn dan" type="button" @click="ask(detail.requisition, 'Rejected')">Reject</button>
+				<button class="btn" type="button" @click="ask(detail.requisition, 'Request Changes')">Request changes</button>
+				<button class="btn pri" type="button" @click="ask(detail.requisition, 'Approved')">Approve</button>
 			</template>
 		</DetailPanel>
 
-		<!-- ==================== APPROVE DIALOG ==================== -->
-		<Dialog :visible="showApproveDialog" title="Approve Requisition" submitLabel="Approve"
-			:loading="deciding" size="sm" @close="showApproveDialog = false" @submit="submitDecision('Approved')">
-			<p class="dialog-intro">
-				Approve <strong>{{ actionReq && actionReq.title }}</strong> for {{ actionReq && (actionReq.requester_full_name || actionReq.requester) }}?
-			</p>
-			<div class="form-group full">
-				<label>Comment (optional)</label>
-				<textarea v-model="decisionComment" class="form-input form-textarea" rows="3"
-					placeholder="Any notes for HR..."></textarea>
+		<Dialog :visible="dec.show" :title="decTitle" :submit-label="decButton" :loading="dec.busy" @close="dec.show = false" @submit="decide">
+			<p class="sub top">{{ decNote }}</p>
+			<div class="fld">
+				<label>{{ dec.answer === 'Approved' ? 'Comment' : 'Reason' }} <span v-if="dec.answer !== 'Approved'" class="req">*</span></label>
+				<textarea v-model="dec.comment" class="in ta" rows="3" :placeholder="decPlaceholder"></textarea>
 			</div>
-			<p class="dialog-note approve-note">
-				HR will be notified and can proceed to publish + assign a recruiter.
-			</p>
-		</Dialog>
-
-		<!-- ==================== REQUEST CHANGES DIALOG ==================== -->
-		<Dialog :visible="showRequestChangesDialog" title="Request Changes" submitLabel="Send Back for Revision"
-			:loading="deciding" size="sm" @close="showRequestChangesDialog = false" @submit="submitDecision('Request Changes')">
-			<p class="dialog-intro">
-				Send <strong>{{ actionReq && actionReq.title }}</strong> back to the manager with your feedback:
-			</p>
-			<div class="form-group full">
-				<label>What needs to change? *</label>
-				<textarea v-model="decisionComment" class="form-input form-textarea" rows="4"
-					placeholder="e.g. Reduce CTC to Rs 12L, or clarify why this seniority is needed..."></textarea>
-			</div>
-			<p class="dialog-note request-note">
-				The manager can edit and resubmit. You'll see the revised version back in your queue.
-			</p>
-		</Dialog>
-
-		<!-- ==================== REJECT DIALOG ==================== -->
-		<Dialog :visible="showRejectDialog" title="Reject Requisition" submitLabel="Confirm Reject"
-			:loading="deciding" size="sm" @close="showRejectDialog = false" @submit="submitDecision('Rejected')">
-			<p class="dialog-intro">
-				Reject <strong>{{ actionReq && actionReq.title }}</strong>? This will close the requisition permanently.
-			</p>
-			<div class="form-group full">
-				<label>Reason for rejection *</label>
-				<textarea v-model="decisionComment" class="form-input form-textarea" rows="4"
-					placeholder="Explain why this position is being rejected..."></textarea>
-			</div>
-			<p class="dialog-note reject-note">
-				The manager will be notified. To hire for this role later, they'll need to create a new requisition.
-			</p>
 		</Dialog>
 	</div>
 </template>
@@ -260,478 +114,186 @@ import Badge from './shared/Badge.vue';
 import Dialog from './shared/Dialog.vue';
 import DetailPanel from './shared/DetailPanel.vue';
 import Toast from './shared/Toast.vue';
+import { shortDate } from './utils/time.js';
 
 export default {
 	name: 'ApprovalsTab',
+	// stage = 'leadership' (default) or 'cmo'
+	props: { stage: { type: String, default: 'leadership' } },
 	components: { Badge, Dialog, DetailPanel, Toast },
-
 	data() {
 		return {
-			requisitions: [],
-			loading: false,
-			deciding: false,
-			showPanel: false,
-			showApproveDialog: false,
-			showRequestChangesDialog: false,
-			showRejectDialog: false,
-			selectedReq: null,
-			detailData: null,
-			actionReq: null,
-			decisionComment: '',
+			roles: [], loading: true, reqs: [],
+			showPanel: false, sel: null, detail: null,
+			dec: { show: false, req: null, answer: '', comment: '', busy: false },
 			toast: { show: false, msg: '', type: 'success' }
 		};
 	},
-
 	computed: {
-		// Final-approval queue only (Priyesh / System Manager).
-		// The CMO's first-stage queue lives in CmoApprovalsTab.vue.
-		pendingRequisitions() {
-			return this.requisitions
-				.filter(r => r.status === 'Pending Approval')
-				.sort((a, b) => (b.days_pending || 0) - (a.days_pending || 0));  // oldest first
+		isCmo() { return this.stage === 'cmo'; },
+		isAdmin() { return this.roles.includes('WF Admin'); },
+		canDecide() {
+			return this.isAdmin || this.roles.includes(this.isCmo ? 'WF CMO' : 'WF Leadership');
 		},
-
-		historyRequisitions() {
-			const done = ['Approved', 'Rejected', 'Needs Revision', 'Published'];
-			return this.requisitions
-				.filter(r => done.includes(r.status))
-				.sort((a, b) => {
-					const dateA = new Date(a.leadership_decision_on || a.creation || 0);
-					const dateB = new Date(b.leadership_decision_on || b.creation || 0);
-					return dateB - dateA;  // most recent first
-				})
-				.slice(0, 20);  // last 20 decisions
+		pendingStatus() { return this.isCmo ? 'Pending CMO Approval' : 'Pending Approval'; },
+		waitingOn() { return this.isCmo ? 'the CMO' : 'leadership'; },
+		title() { return this.isCmo ? 'CMO approvals' : 'Approvals'; },
+		subtitle() {
+			if (this.isCmo) return 'Requisitions from your team come to you first. Approved ones go on to leadership.';
+			return this.canDecide
+				? 'Hiring requests waiting on your decision. Each one has a 7-day window.'
+				: 'Requests waiting on leadership. Read-only for you.';
+		},
+		emptyNote() {
+			return this.isCmo
+				? 'When your team raises a requisition it lands here first. You can approve it, send it back with changes, or reject it.'
+				: 'New requests land here and you get an email.';
+		},
+		queue() { return this.reqs.filter(r => r.status === this.pendingStatus); },
+		decided() {
+			const done = this.isCmo
+				? ['Rejected by CMO', 'Pending Approval', 'Approved', 'Published']
+				: ['Approved', 'Published', 'Rejected', 'Needs Revision'];
+			return this.reqs.filter(r => done.includes(r.status)).slice(0, 30);
+		},
+		decTitle() {
+			if (this.dec.answer === 'Approved') return this.isCmo ? 'Approve and send on?' : 'Approve this requisition?';
+			return this.dec.answer === 'Rejected' ? 'Reject this requisition?' : 'Request changes';
+		},
+		decButton() { return this.dec.answer === 'Approved' ? 'Approve' : (this.dec.answer === 'Rejected' ? 'Reject' : 'Send back'); },
+		decNote() {
+			if (!this.dec.req) return '';
+			const who = this.dec.req.requester_full_name || this.dec.req.requester;
+			if (this.dec.answer === 'Approved') return this.isCmo ? 'It goes to leadership for the final decision.' : 'HR can then publish it and assign a recruiter.';
+			if (this.dec.answer === 'Rejected') return 'It stops here. ' + who + ' is told and can raise a new one.';
+			return 'It goes back to ' + who + ' to edit and resubmit.';
+		},
+		decPlaceholder() {
+			if (this.dec.answer === 'Approved') return 'Optional';
+			return this.dec.answer === 'Rejected' ? 'Why this is not going ahead' : 'What needs to change';
 		}
 	},
-
 	mounted() {
-		this.loadRequisitions();
+		this.roles = (window.frappe && frappe.user_roles) || [];
+		this.load();
 	},
-
 	methods: {
-		async api(method, params = {}) {
+		api(method, args = {}) {
 			return new Promise((resolve, reject) => {
-				frappe.call({
-					method: method,
-					args: params,
-					async: true,
-					callback: r => resolve(r.message),
-					error: reject
-				});
+				frappe.call({ method, args, callback: r => resolve(r.message), error: reject });
 			});
 		},
-
-		async loadRequisitions() {
-			this.loading = true;
+		notify(msg, type = 'success') { this.toast = { show: true, msg, type }; },
+		async load() {
 			try {
 				const res = await this.api('wf_get_requisitions');
-				this.requisitions = res.requisitions || [];
-			} catch (e) {
-				this.showToast('Failed to load requisitions', 'error');
-			}
+				this.reqs = (res && res.requisitions) || [];
+			} catch (e) { this.notify('Could not load requests.', 'error'); }
 			this.loading = false;
 		},
-
-		canDecideOn(perms) {
-			if (!perms) return false;
-			return !!perms.can_approve;
+		shortDate(d) { return shortDate(d); },
+		skillList(s) { return String(s || '').split(',').map(x => x.trim()).filter(Boolean); },
+		lastComment(text) {
+			const parts = String(text || '').split('\n---\n');
+			return parts[parts.length - 1].trim();
 		},
-
-		daysClass(r) {
-			if (r.days_pending > 7) return 'days-overdue';
-			if (r.days_pending > 4) return 'days-warning';
-			return 'days-normal';
+		canDecideOn(detail) {
+			return this.isCmo ? !!detail.permissions.can_cmo_decide : !!detail.permissions.can_approve;
 		},
-
-		shortDesc(text) {
-			const t = (text || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-			if (!t) return 'Not provided';
-			return t.length > 500 ? t.slice(0, 500) + ' …' : t;
+		async openDetail(r) {
+			this.sel = r; this.detail = null; this.showPanel = true;
+			try { this.detail = await this.api('wf_get_requisition_detail', { requisition: r.name }); }
+			catch (e) { this.notify('Could not open this requisition.', 'error'); this.showPanel = false; }
 		},
-
-		async openDetail(req) {
-			this.selectedReq = req;
-			this.detailData = null;
-			this.showPanel = true;
-			try {
-				const res = await this.api('wf_get_requisition_detail', { requisition: req.name });
-				this.detailData = res;
-			} catch (e) {
-				this.showToast('Failed to load requisition details', 'error');
-				this.showPanel = false;
-			}
-		},
-
-		closePanel() {
-			this.showPanel = false;
-			this.selectedReq = null;
-			this.detailData = null;
-		},
-
-		openApproveDialog(req) {
-			this.actionReq = req;
-			this.decisionComment = '';
-			this.showApproveDialog = true;
-		},
-
-		openRequestChangesDialog(req) {
-			this.actionReq = req;
-			this.decisionComment = '';
-			this.showRequestChangesDialog = true;
-		},
-
-		openRejectDialog(req) {
-			this.actionReq = req;
-			this.decisionComment = '';
-			this.showRejectDialog = true;
-		},
-
-		async submitDecision(decision) {
-			if (decision === 'Request Changes' && !this.decisionComment.trim()) {
-				this.showToast('Please explain what needs to change', 'error');
+		ask(req, answer) { this.dec = { show: true, req, answer, comment: '', busy: false }; },
+		async decide() {
+			if (this.dec.answer !== 'Approved' && !this.dec.comment.trim()) {
+				this.notify('Please add a reason so the other person knows why.', 'error');
 				return;
 			}
-			if (decision === 'Rejected' && !this.decisionComment.trim()) {
-				this.showToast('Please provide a rejection reason', 'error');
-				return;
-			}
-
-			this.deciding = true;
+			this.dec.busy = true;
 			try {
-				await this.api('wf_leadership_decide', {
-					data: {
-						requisition: this.actionReq.name,
-						decision: decision,
-						comment: this.decisionComment.trim()
-					}
+				const res = await this.api(this.isCmo ? 'wf_cmo_decide' : 'wf_leadership_decide', {
+					data: { requisition: this.dec.req.name, decision: this.dec.answer, comment: this.dec.comment.trim() }
 				});
-
-				const messages = {
-					'Approved': 'Requisition approved',
-					'Request Changes': 'Sent back to manager for revision',
-					'Rejected': 'Requisition rejected'
-				};
-				this.showToast(messages[decision] || 'Decision recorded');
-
-				this.showApproveDialog = false;
-				this.showRequestChangesDialog = false;
-				this.showRejectDialog = false;
+				this.notify((res && res.message) || 'Done.');
+				this.dec.show = false;
 				this.showPanel = false;
-				this.actionReq = null;
-				this.decisionComment = '';
-
-				await this.loadRequisitions();
-			} catch (e) {
-				this.showToast('Failed to submit decision: ' + (e.message || 'Please try again'), 'error');
-			}
-			this.deciding = false;
-		},
-
-		formatDate(d) {
-			if (!d) return '—';
-			return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-		},
-
-		formatDateTime(d) {
-			if (!d) return '—';
-			const date = new Date(d);
-			return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) +
-				' at ' + date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-		},
-
-		showToast(msg, type = 'success') {
-			this.toast = { show: true, msg, type };
+				await this.load();
+			} catch (e) { /* frappe shows the reason */ }
+			this.dec.busy = false;
 		}
 	}
 };
 </script>
 
 <style scoped>
-.approvals-tab { padding-bottom: 40px; }
-
-.tab-header { margin-bottom: 24px; }
-.tab-header h2 { margin: 0; font-size: 22px; font-weight: 700; color: #111827; }
-.tab-subtitle { margin: 4px 0 0; color: #6b7280; font-size: 14px; }
-
-.empty-state {
-	background: #fff;
-	border: 1px solid #e5e7eb;
-	border-radius: 12px;
-	padding: 60px 20px;
-	text-align: center;
-}
-.empty-icon {
-	font-size: 48px;
-	color: #10b981;
-	width: 80px;
-	height: 80px;
-	border-radius: 50%;
-	background: #d1fae5;
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	margin-bottom: 16px;
-}
-.empty-state h3 { margin: 0 0 8px; font-size: 20px; font-weight: 600; color: #111827; }
-.empty-state p { margin: 0; color: #6b7280; font-size: 14px; }
-
-.section { margin-bottom: 32px; }
-.section-header {
-	display: flex;
-	align-items: center;
-	gap: 12px;
-	margin-bottom: 16px;
-	flex-wrap: wrap;
-}
-.section-header h3 {
-	margin: 0;
-	font-size: 16px;
-	font-weight: 700;
-	color: #111827;
-	display: flex;
-	align-items: center;
-	gap: 8px;
-}
-.section-icon {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	width: 28px;
-	height: 28px;
-	border-radius: 50%;
-	font-size: 14px;
-}
-.pending-icon { background: #fef3c7; color: #92400e; }
-.history-icon { background: #f3f4f6; color: #4b5563; }
-.section-count {
-	background: #f3f4f6;
-	color: #4b5563;
-	padding: 2px 12px;
-	border-radius: 12px;
-	font-size: 13px;
-	font-weight: 600;
-}
-
-.requisition-cards { display: flex; flex-direction: column; gap: 16px; }
-
-.req-card {
-	background: #fff;
-	border: 1px solid #e5e7eb;
-	border-radius: 12px;
-	padding: 20px;
-	transition: box-shadow 0.15s;
-}
-.req-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.06); }
-.req-card.overdue { border-left: 4px solid #ef4444; }
-
-.req-card-header {
-	display: flex;
-	justify-content: space-between;
-	align-items: flex-start;
-	gap: 16px;
-	margin-bottom: 16px;
-}
-.req-title {
-	font-size: 17px;
-	font-weight: 700;
-	color: #111827;
-	margin-bottom: 6px;
-	display: flex;
-	align-items: center;
-	gap: 8px;
-	flex-wrap: wrap;
-}
-.rev-badge {
-	display: inline-block;
-	padding: 2px 8px;
-	background: #fef3c7;
-	color: #92400e;
-	border-radius: 8px;
-	font-size: 11px;
-	font-weight: 700;
-}
-.req-meta {
-	display: flex;
-	gap: 12px;
-	flex-wrap: wrap;
-	margin-bottom: 4px;
-	color: #4b5563;
-	font-size: 13px;
-}
-.meta-item::after {
-	content: '·';
-	margin-left: 12px;
-	color: #d1d5db;
-}
-.meta-item:last-child::after { content: ''; margin: 0; }
-.req-sub {
-	color: #6b7280;
-	font-size: 13px;
-	display: flex;
-	gap: 8px;
-	align-items: center;
-	flex-wrap: wrap;
-}
-.days-normal { color: #6b7280; }
-.days-warning { color: #f59e0b; font-weight: 600; }
-.days-overdue { color: #ef4444; font-weight: 700; }
-.overdue-badge {
-	background: #fee2e2;
-	color: #991b1b;
-	padding: 2px 8px;
-	border-radius: 8px;
-	font-size: 11px;
-	font-weight: 700;
-}
-
-.btn-view-details {
-	background: transparent;
-	color: #4f46e5;
-	border: none;
-	font-size: 13px;
-	font-weight: 600;
-	cursor: pointer;
-	white-space: nowrap;
-	padding: 4px 8px;
-}
-.btn-view-details:hover { color: #4338ca; text-decoration: underline; }
-
-.req-card-body {
-	background: #f9fafb;
-	border-radius: 8px;
-	padding: 12px 14px;
-	margin-bottom: 16px;
-}
-.body-section { margin-bottom: 8px; }
-.body-section:last-child { margin-bottom: 0; }
-.body-label { font-size: 11px; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
-.body-text { color: #374151; font-size: 13px; line-height: 1.5; }
-
-.req-card-actions {
-	display: flex;
-	gap: 8px;
-	flex-wrap: wrap;
-}
-
-.btn-approve, .btn-request-changes, .btn-reject {
-	display: inline-flex;
-	align-items: center;
-	gap: 6px;
-	padding: 10px 20px;
-	border: none;
-	border-radius: 8px;
-	font-weight: 600;
-	font-size: 14px;
-	cursor: pointer;
-	transition: all 0.15s;
-}
-.btn-approve { background: #10b981; color: #fff; }
-.btn-approve:hover { background: #059669; }
-.btn-request-changes { background: #f59e0b; color: #fff; }
-.btn-request-changes:hover { background: #d97706; }
-.btn-reject { background: #fff; color: #ef4444; border: 1.5px solid #ef4444; }
-.btn-reject:hover { background: #ef4444; color: #fff; }
-.btn-icon { font-size: 15px; font-weight: 700; }
-
-.loading-state {
-	text-align: center;
-	padding: 40px;
-	color: #6b7280;
-}
-
-.table-wrapper { background: #fff; border-radius: 10px; border: 1px solid #e5e7eb; overflow-x: auto; }
-.wf-table { width: 100%; border-collapse: collapse; min-width: 700px; }
-.wf-table th { text-align: left; padding: 12px 16px; font-size: 12px; font-weight: 600; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; white-space: nowrap; }
-.wf-table td { padding: 14px 16px; font-size: 14px; border-bottom: 1px solid #f3f4f6; }
-.clickable-row { cursor: pointer; }
-.clickable-row:hover { background: #f9fafb; }
-.req-title-cell { font-weight: 600; color: #111827; }
-
-/* Detail Panel */
-.detail-content { display: flex; flex-direction: column; gap: 20px; }
-
-.detail-header-info {
-	display: flex;
-	justify-content: space-between;
-	align-items: center;
-	padding-bottom: 16px;
-	border-bottom: 1px solid #f3f4f6;
-}
-.detail-id { font-family: monospace; font-size: 12px; color: #6b7280; }
-
-.detail-facts-grid {
-	display: grid;
-	grid-template-columns: 1fr 1fr;
-	gap: 16px;
-}
-.fact-item { }
-.fact-label { font-size: 11px; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
-.fact-value { font-size: 14px; color: #111827; font-weight: 500; }
-
-.detail-section { }
-.section-title {
-	font-size: 12px;
-	font-weight: 700;
-	color: #6b7280;
-	text-transform: uppercase;
-	letter-spacing: 0.5px;
-	margin-bottom: 8px;
-}
-.section-body {
-	color: #374151;
-	font-size: 14px;
-	line-height: 1.6;
-}
-.highlight-section {
-	background: #eff6ff;
-	border-left: 3px solid #3b82f6;
-	padding: 12px 16px;
-	border-radius: 6px;
-}
-.highlight-section .section-title { color: #1e40af; }
-
-.revision-history {
-	background: #fffbeb;
-	border-left: 3px solid #f59e0b;
-	padding: 12px 16px;
-	border-radius: 6px;
-}
-.revision-history .section-title { color: #92400e; }
-
-.timeline { position: relative; padding-left: 24px; }
-.timeline::before { content: ''; position: absolute; left: 8px; top: 6px; bottom: 6px; width: 2px; background: #e5e7eb; }
-.timeline-item { position: relative; padding-bottom: 16px; }
-.timeline-item:last-child { padding-bottom: 0; }
-.timeline-dot { position: absolute; left: -20px; top: 4px; width: 12px; height: 12px; border-radius: 50%; background: #4f46e5; border: 2px solid #fff; box-shadow: 0 0 0 2px #4f46e5; }
-.timeline-content { padding-left: 4px; }
-.timeline-event { font-weight: 600; font-size: 13px; color: #111827; }
-.timeline-meta { font-size: 12px; color: #6b7280; margin-top: 2px; }
-.timeline-comment { margin-top: 4px; font-size: 12px; color: #78350f; background: #fef3c7; padding: 6px 10px; border-radius: 4px; font-style: italic; }
-
-/* Dialog content */
-.dialog-intro { margin: 0 0 16px; font-size: 14px; color: #374151; line-height: 1.5; }
-.dialog-note {
-	margin: 12px 0 0;
-	padding: 10px 12px;
-	border-radius: 6px;
-	font-size: 12px;
-	line-height: 1.5;
-}
-.approve-note { background: #f0fdf4; color: #166534; border-left: 3px solid #10b981; }
-.request-note { background: #fffbeb; color: #92400e; border-left: 3px solid #f59e0b; }
-.reject-note { background: #fef2f2; color: #991b1b; border-left: 3px solid #ef4444; }
-
-.form-group { display: flex; flex-direction: column; gap: 6px; }
-.form-group.full { grid-column: 1 / -1; }
-.form-group label { font-size: 13px; font-weight: 600; color: #374151; }
-.form-input { padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; outline: none; width: 100%; box-sizing: border-box; }
-.form-input:focus { border-color: #4f46e5; box-shadow: 0 0 0 3px rgba(79,70,229,0.1); }
-.form-textarea { resize: vertical; font-family: inherit; }
-
-@media (max-width: 768px) {
-	.req-card-header { flex-direction: column; align-items: stretch; }
-	.req-card-actions { flex-direction: column; }
-	.btn-approve, .btn-request-changes, .btn-reject { justify-content: center; }
-	.detail-facts-grid { grid-template-columns: 1fr; }
-}
+.head { margin-bottom: 20px; }
+.head h1 { margin: 0; font-size: 26px; font-weight: 600; letter-spacing: -.02em; color: var(--wf-ink); }
+.head p { margin: 5px 0 0; color: var(--wf-mut); max-width: 72ch; }
+.card { position: relative; background: #fff; border: 1px solid var(--wf-line); border-radius: 14px; padding: 20px 22px 18px 27px; overflow: hidden; margin-bottom: 16px; max-width: 900px; }
+.card::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 5px; background: var(--wf-amber); }
+.kind { font-size: 12.5px; font-weight: 600; color: var(--wf-amber-ink); }
+.card h3 { margin: 8px 0 3px; font-size: 18px; font-weight: 600; letter-spacing: -.01em; color: var(--wf-ink); }
+.ctx { color: var(--wf-mut); font-size: 13.5px; }
+.facts { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0 16px; }
+.fact { height: 26px; padding: 0 10px; border-radius: 7px; background: var(--wf-line-2); border: 1px solid #EEF0F4; display: inline-flex; align-items: center; font-size: 12.5px; color: var(--wf-mut); }
+.fact b { color: var(--wf-ink); font-weight: 500; margin-left: 5px; }
+.foot { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.foot-r { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
+.sla { display: inline-flex; align-items: center; gap: 8px; }
+.bar { width: 90px; height: 6px; border-radius: 99px; background: #E9EBF3; overflow: hidden; display: inline-block; }
+.bar i { display: block; height: 100%; background: var(--wf-amber); }
+.bar i.late { background: var(--wf-bad); }
+.panel { background: #fff; border: 1px solid var(--wf-line); border-radius: 14px; overflow: hidden; }
+.p-head { display: flex; align-items: center; gap: 10px; padding: 16px 20px 4px; }
+.p-head h2 { margin: 0; font-size: 16px; font-weight: 600; }
+.t { width: 100%; border-collapse: collapse; }
+.t td { padding: 13px 16px; border-bottom: 1px solid var(--wf-line-2); }
+.t tbody tr:last-child td { border-bottom: 0; }
+.t td:first-child { padding-left: 20px; }
+.t tbody tr { cursor: pointer; }
+.t tbody tr:hover td { background: #FAFAFD; }
+.ttl { font-weight: 600; color: var(--wf-ink); }
+.sub { font-size: 13px; color: var(--wf-mut); }
+.sub.top { margin: -6px 0 14px; }
+.num { font-variant-numeric: tabular-nums; }
+.empty { text-align: center; padding: 48px 20px; }
+.empty h3 { margin: 0 0 6px; font-size: 17px; font-weight: 600; }
+.empty p { margin: 0 auto; color: var(--wf-mut); max-width: 48ch; }
+.btn { height: 38px; padding: 0 15px; border-radius: 9px; border: 1px solid var(--wf-line); background: #fff; color: var(--wf-ink-2); font: inherit; font-weight: 500; font-size: 14px; cursor: pointer; }
+.btn:hover { background: var(--wf-line-2); }
+.btn.pri { background: var(--wf-primary); border-color: var(--wf-primary); color: #fff; }
+.btn.pri:hover { background: var(--wf-primary-2); }
+.btn.dan { color: var(--wf-bad); border-color: #F5C2C2; }
+.btn.dan:hover { background: var(--wf-bad-tint); }
+.btn.sm { height: 32px; padding: 0 11px; font-size: 13px; }
+.pills { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+.kv { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 20px; margin: 0 0 20px; }
+.kv dt { font-size: 12.5px; color: var(--wf-mut-2); }
+.kv dd { margin: 2px 0 0; font-weight: 500; }
+.sec { margin-bottom: 20px; }
+.sec h4 { margin: 0 0 8px; font-size: 13.5px; font-weight: 600; }
+.sec p { margin: 0; }
+.sec p.none { color: var(--wf-mut-2); font-style: italic; }
+.pre { white-space: pre-wrap; }
+.tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.tag { height: 26px; padding: 0 10px; border-radius: 7px; background: var(--wf-primary-tint); color: var(--wf-primary-2); display: inline-flex; align-items: center; font-size: 12.5px; font-weight: 500; }
+.tl { list-style: none; margin: 0; padding: 0; }
+.tl li { position: relative; padding: 0 0 18px 30px; }
+.tl li::before { content: ""; position: absolute; left: 8px; top: 20px; bottom: -2px; width: 2px; background: var(--wf-line); }
+.tl li:last-child::before { display: none; }
+.tl .dot { position: absolute; left: 0; top: 3px; width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--wf-line); background: #fff; }
+.tl li.done .dot { background: var(--wf-ok-dot); border-color: var(--wf-ok-dot); }
+.tl li.done::before { background: var(--wf-ok-dot); }
+.tl li.now .dot { border-color: var(--wf-amber); box-shadow: 0 0 0 4px var(--wf-amber-tint); }
+.tl b { display: block; font-weight: 600; }
+.tl span { display: block; font-size: 13px; color: var(--wf-mut); }
+.tl .cm { margin-top: 6px; padding: 8px 10px; border-radius: 8px; background: var(--wf-line-2); font-size: 13px; color: var(--wf-ink); }
+.fld label { display: block; font-weight: 500; margin-bottom: 6px; }
+.req { color: var(--wf-bad); }
+.in { box-sizing: border-box; width: 100%; border: 1px solid var(--wf-line); border-radius: 9px; padding: 10px 12px; font: inherit; }
+.in:focus { outline: none; border-color: var(--wf-primary-2); box-shadow: 0 0 0 3px var(--wf-primary-tint); }
+.ta { line-height: 1.5; resize: vertical; }
+@media (max-width: 860px) { .hs { display: none; } .kv { grid-template-columns: 1fr; } }
 </style>

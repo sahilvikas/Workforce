@@ -38,7 +38,13 @@
 
 		<main class="wf-main">
 			<div class="wf-wrap">
-				<JobsTab v-if="isJobsView" :section="jobsSection" />
+				<OverviewTab
+					v-if="activeTab === 'overview'"
+					@go="switchTab"
+					@open-position="openPosition"
+					@open-requisition="openRequisition"
+				/>
+				<JobsTab v-if="isJobsView" ref="jobs" :section="jobsSection" />
 				<RequisitionsTab v-if="activeTab === 'requisitions'" />
 				<ApprovalsTab v-if="activeTab === 'approvals'" />
 				<CmoApprovalsTab v-if="activeTab === 'cmo-approvals'" />
@@ -52,6 +58,7 @@
 </template>
 
 <script>
+import OverviewTab from './OverviewTab.vue';
 import JobsTab from './JobsTab.vue';
 import RequisitionsTab from './RequisitionsTab.vue';
 import ApprovalsTab from './ApprovalsTab.vue';
@@ -67,7 +74,8 @@ const JOBS_ROLES = ['WF Admin', 'WF HR Manager', 'WF Recruitment Coordinator'];
 
 const NAV = [
 	// Overview = the old Jobs "Hiring Dashboard". Coordinators never had it.
-	{ key: 'overview',      label: 'Overview',            group: 'Hiring', icon: 'home',   roles: ['WF Admin', 'WF HR Manager'], jobs: 'dashboard' },
+	// Overview is its own screen: HR sees the HR dashboard, managers and the CMO see theirs
+	{ key: 'overview',      label: 'Overview',            group: 'Hiring', icon: 'home',   roles: ['WF Admin', 'WF HR Manager', 'WF Hiring Manager', 'WF CMO'] },
 	{ key: 'positions',     label: 'Positions',           group: 'Hiring', icon: 'brief',  roles: JOBS_ROLES, jobs: 'jobs' },
 	{ key: 'requisitions',  label: 'Requisitions',        group: 'Hiring', icon: 'file',   roles: ['WF Admin', 'WF HR Manager', 'WF Hiring Manager'] },
 	{ key: 'approvals',     label: 'Approvals',           group: 'Hiring', icon: 'check',  roles: ['WF Admin', 'WF Leadership'] },
@@ -104,12 +112,13 @@ const ROLE_TITLES = [
 
 export default {
 	name: 'WorkforceHub',
-	components: { JobsTab, RequisitionsTab, ApprovalsTab, CmoApprovalsTab, CandidatesTab, InterviewsTab, TalentSearchTab, SharedProfilesTab },
+	components: { OverviewTab, JobsTab, RequisitionsTab, ApprovalsTab, CmoApprovalsTab, CandidatesTab, InterviewsTab, TalentSearchTab, SharedProfilesTab },
 
 	data() {
 		return {
 			activeTab: '',
 			userRoles: [],
+			pendingPosition: '',
 			icons: ICONS
 		};
 	},
@@ -175,6 +184,7 @@ export default {
 		resolve(hash) {
 			let key = hash;
 			if (key === 'jobs') key = this.validKeys.includes('overview') ? 'overview' : 'positions';
+			if (key === 'dashboard') key = 'overview';
 			if (this.validKeys.includes(key)) return key;
 			return this.validKeys[0] || '';
 		},
@@ -186,6 +196,18 @@ export default {
 		onHashChange() {
 			const key = this.resolve((window.location.hash || '').replace('#', ''));
 			if (key && key !== this.activeTab) this.activeTab = key;
+		},
+		// Overview asks for a position or requisition to be opened: hand it to the right tab
+		openPosition(jobName) {
+			this.pendingPosition = jobName;
+			this.switchTab('positions');
+			this.$nextTick(() => {
+				const t = this.$refs.jobs;
+				if (t && t.openPosition) t.openPosition(jobName);
+			});
+		},
+		openRequisition(req) {
+			this.switchTab('requisitions');
 		},
 		labelFor(item) {
 			// Samarth sir sees his CMO queue simply as "Approvals"
